@@ -115,22 +115,23 @@ class SentrymoApiClient:
             self.token_expires_at = token_expires_at
 
     async def async_exchange_setup_key(
-        self,
-        api_url: str,
-        setup_key: str,
-        cpin: str,
-        *,
-        client_name: str | None = None,
-        ha_instance_id: str | None = None,
+            self,
+            api_url: str,
+            setup_key: str,
+            cpin: str,
+            *,
+            client_name: str | None = None,
+            ha_instance_id: str | None = None,
     ) -> dict[str, Any]:
         """Exchange a setup key for tokens."""
-        del cpin
         self.api_url = self.normalize_api_url(api_url)
+
         response = await self._request(
             "post",
             API_AUTH_EXCHANGE,
             json_payload={
                 "setup_key": setup_key,
+                "cpin": cpin,
                 "client_name": client_name,
                 "ha_instance_id": ha_instance_id,
                 "requested_polling": DEFAULT_EXCHANGE_PAYLOAD,
@@ -138,6 +139,7 @@ class SentrymoApiClient:
             require_auth=False,
             allow_refresh=False,
         )
+
         self.set_tokens(**self._extract_tokens(response))
         return response
 
@@ -168,56 +170,100 @@ class SentrymoApiClient:
         return await self._request("get", API_VEHICLES)
 
     async def async_get_snapshot(self) -> dict[str, Any]:
-        """Fetch and merge state segments into one snapshot."""
+        """Fetch and merge profile, vehicles and optional state segments into one snapshot."""
+        polling: dict[str, int] = {}
+        merged: dict[str, dict[str, Any]] = {}
+        server_time: str | None = None
+        account: dict[str, Any] = {}
+        capabilities: dict[str, Any] = {}
+
+        # 1) Profile je základ: polling, account, globálne capabilities.
+        try:
+            profile = await self.async_get_profile()
+        except SentrymoApiError as err:
+            _LOGGER.warning("Sentrymo profile endpoint failed: %s", err)
+            profile = {}
+
+        if isinstance(profile, Mapping):
+            profile_polling = profile.get("polling")
+            if isinstance(profile_polling, Mapping):
+                for key, value in profile_polling.items():
+                    if isinstance(value, int):
+                        polling[str(key)] = value
+
+            profile_account = profile.get("account")
+            if isinstance(profile_account, Mapping):
+                account = dict(profile_account)
+
+            profile_capabilities = profile.get("capabilities")
+            if isinstance(profile_capabilities, Mapping):
+                capabilities = dict(profile_capabilities)
+
+            profile_server = profile.get("server")
+            if isinstance(profile_server, Mapping):
+                server_time = profile_server.get("server_time", server_time)
+
+        # 2) Vehicles je hlavný zdroj zoznamu zariadení.
+        # Toto musí fungovať aj keď /state/* ešte nie je komplet hotové.
+        try:
+            vehicles_response = await self.async_get_vehicles()
+        except SentrymoApiError as err:
+            _LOGGER.warning("Sentrymo vehicles endpoint failed: %s", err)
+            vehicles_response = {}
+
+        for vehicle in vehicles_response.get("vehicles", []):
+            if not isinstance(vehicle, Mapping):
+                continue
+
+            vehicle_id = self._coerce_vehicle_id(vehicle)
+            if vehicle_id is None:
+                continue
+
+            merged.setdefault(vehicle_id, {"vehicle_id": vehicle_id})
+            self._merge_vehicle_segment(merged[vehicle_id], dict(vehicle))
+
+        # 3) Segmenty sú voliteľné rozšírenie základných vozidiel.
+        # Ak niektorý segment padne, nesmie zhodiť celú integráciu.
         segment_paths = {
             "fast": API_STATE_FAST,
             "telemetry": API_STATE_TELEMETRY,
             "slow": API_STATE_SLOW,
             "config": API_STATE_CONFIG,
         }
-        polling: dict[str, int] = {}
-        merged: dict[str, dict[str, Any]] = {}
-        server_time: str | None = None
 
         for segment, path in segment_paths.items():
-            response = await self._get_segment(segment, path)
+            try:
+                response = await self._get_segment(segment, path)
+            except SentrymoApiError as err:
+                _LOGGER.warning("Skipping Sentrymo segment %s because it failed: %s", segment, err)
+                continue
+
             server_time = response.get("server_time", server_time)
+
             recommended = response.get("recommended_poll_seconds")
             if isinstance(recommended, int):
                 polling[segment] = recommended
+
             for vehicle in response.get("vehicles", []):
                 if not isinstance(vehicle, Mapping):
                     continue
+
                 vehicle_id = self._coerce_vehicle_id(vehicle)
                 if vehicle_id is None:
                     continue
-                merged.setdefault(vehicle_id, {"vehicle_id": vehicle_id})
-                self._merge_vehicle_segment(merged[vehicle_id], dict(vehicle))
 
-        profile = await self.async_get_profile()
-        profile_polling = profile.get("polling")
-        if isinstance(profile_polling, Mapping):
-            for key, value in profile_polling.items():
-                if isinstance(value, int):
-                    polling[key] = value
-
-        if not merged:
-            vehicles_response = await self.async_get_vehicles()
-            for vehicle in vehicles_response.get("vehicles", []):
-                if not isinstance(vehicle, Mapping):
-                    continue
-                vehicle_id = self._coerce_vehicle_id(vehicle)
-                if vehicle_id is None:
-                    continue
                 merged.setdefault(vehicle_id, {"vehicle_id": vehicle_id})
                 self._merge_vehicle_segment(merged[vehicle_id], dict(vehicle))
 
         return {
             "server_time": server_time,
             "polling": polling,
-            "account": profile.get("account", {}),
-            "capabilities": profile.get("capabilities", {}),
-            "vehicles": sorted(merged.values(), key=lambda item: str(item.get("name", item["vehicle_id"]))),
+            "account": account,
+            "capabilities": capabilities,
+            "vehicles": sorted(
+                merged.values(),
+                key=lambda item: str(item.get("name", item.get("vehicle_id", ""))),
+            ),
         }
 
     async def async_send_command(
