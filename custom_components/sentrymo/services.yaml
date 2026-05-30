@@ -1,10 +1,60 @@
 refresh:
   name: Refresh Sentrymo data
-  description: Force an immediate snapshot refresh for one Sentrymo config entry or for all entries.
+  description: Force an immediate data refresh for one Sentrymo config entry or for all entries.
   fields:
     entry_id:
       name: Entry ID
       description: Optional Home Assistant config entry ID to refresh. When omitted, all Sentrymo entries are refreshed.
+      required: false
+      selector:
+        text:
+
+set_protection:
+  name: Set protection
+  description: Enable or disable Sentrymo vehicle protection.
+  fields:
+    vehicle_id:
+      name: Vehicle ID
+      description: Sentrymo vehicle ID.
+      required: true
+      selector:
+        text:
+    enabled:
+      name: Enabled
+      description: Turn protection on or off.
+      required: true
+      selector:
+        boolean:
+    entry_id:
+      name: Entry ID
+      description: Optional Home Assistant config entry ID.
+      required: false
+      selector:
+        text:
+
+set_protection_mode:
+  name: Set protection mode
+  description: Change Sentrymo vehicle protection mode.
+  fields:
+    vehicle_id:
+      name: Vehicle ID
+      description: Sentrymo vehicle ID.
+      required: true
+      selector:
+        text:
+    mode:
+      name: Mode
+      description: Protection mode.
+      required: true
+      selector:
+        select:
+          options:
+            - disabled
+            - manual
+            - automatic
+    entry_id:
+      name: Entry ID
+      description: Optional Home Assistant config entry ID.
       required: false
       selector:
         text:

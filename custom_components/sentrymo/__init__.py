@@ -13,7 +13,10 @@ from homeassistant.helpers.typing import ConfigType
 
 from .api import SentrymoApiClient
 from .const import (
+    ATTR_ENABLED,
     ATTR_ENTRY_ID,
+    ATTR_MODE,
+    ATTR_VEHICLE_ID,
     CONF_ACCESS_TOKEN,
     CONF_API_URL,
     CONF_REFRESH_TOKEN,
@@ -23,7 +26,10 @@ from .const import (
     DATA_SERVICES_REGISTERED,
     DOMAIN,
     PLATFORMS,
+    PROTECTION_MODE_OPTIONS,
     SERVICE_REFRESH,
+    SERVICE_SET_PROTECTION,
+    SERVICE_SET_PROTECTION_MODE,
 )
 from .coordinator import SentrymoDataUpdateCoordinator
 
@@ -90,19 +96,66 @@ async def _async_register_services(hass: HomeAssistant) -> None:
         for coordinator in _iter_coordinators(hass, call.data.get(ATTR_ENTRY_ID)):
             await coordinator.async_request_refresh()
 
+    async def async_handle_set_protection(call: ServiceCall) -> None:
+        vehicle_id = str(call.data[ATTR_VEHICLE_ID])
+        enabled = bool(call.data[ATTR_ENABLED])
+        for data in _iter_entry_data(hass, call.data.get(ATTR_ENTRY_ID)):
+            coordinator = data[DATA_COORDINATOR]
+            if coordinator.vehicle_by_id(vehicle_id) is None:
+                continue
+            await data[DATA_CLIENT].async_set_protection_active(vehicle_id, enabled)
+            await coordinator.async_request_refresh()
+            return
+
+    async def async_handle_set_protection_mode(call: ServiceCall) -> None:
+        vehicle_id = str(call.data[ATTR_VEHICLE_ID])
+        mode = str(call.data[ATTR_MODE])
+        for data in _iter_entry_data(hass, call.data.get(ATTR_ENTRY_ID)):
+            coordinator = data[DATA_COORDINATOR]
+            if coordinator.vehicle_by_id(vehicle_id) is None:
+                continue
+            await data[DATA_CLIENT].async_set_protection_mode(vehicle_id, mode)
+            await coordinator.async_request_refresh()
+            return
+
     hass.services.async_register(
         DOMAIN,
         SERVICE_REFRESH,
         async_handle_refresh,
         schema=vol.Schema({vol.Optional(ATTR_ENTRY_ID): str}),
     )
+    hass.services.async_register(
+        DOMAIN,
+        SERVICE_SET_PROTECTION,
+        async_handle_set_protection,
+        schema=vol.Schema(
+            {
+                vol.Required(ATTR_VEHICLE_ID): vol.Coerce(str),
+                vol.Required(ATTR_ENABLED): bool,
+                vol.Optional(ATTR_ENTRY_ID): str,
+            }
+        ),
+    )
+    hass.services.async_register(
+        DOMAIN,
+        SERVICE_SET_PROTECTION_MODE,
+        async_handle_set_protection_mode,
+        schema=vol.Schema(
+            {
+                vol.Required(ATTR_VEHICLE_ID): vol.Coerce(str),
+                vol.Required(ATTR_MODE): vol.In(PROTECTION_MODE_OPTIONS),
+                vol.Optional(ATTR_ENTRY_ID): str,
+            }
+        ),
+    )
     hass.data[DOMAIN][DATA_SERVICES_REGISTERED] = True
 
 
 async def _async_unregister_services(hass: HomeAssistant) -> None:
     """Unregister services when no entries remain."""
-    if hass.services.has_service(DOMAIN, SERVICE_REFRESH):
-        hass.services.async_remove(DOMAIN, SERVICE_REFRESH)
+    for service in (SERVICE_REFRESH, SERVICE_SET_PROTECTION, SERVICE_SET_PROTECTION_MODE):
+        if hass.services.has_service(DOMAIN, service):
+            hass.services.async_remove(DOMAIN, service)
     hass.data[DOMAIN].pop(DATA_SERVICES_REGISTERED, None)
 
 
@@ -111,11 +164,21 @@ def _iter_coordinators(
     target_entry_id: str | None = None,
 ) -> Iterable[SentrymoDataUpdateCoordinator]:
     """Yield coordinators for configured entries."""
+    for data in _iter_entry_data(hass, target_entry_id):
+        coordinator = data.get(DATA_COORDINATOR)
+        if isinstance(coordinator, SentrymoDataUpdateCoordinator):
+            yield coordinator
+
+
+def _iter_entry_data(
+    hass: HomeAssistant,
+    target_entry_id: str | None = None,
+) -> Iterable[dict]:
+    """Yield stored entry data for configured entries."""
     for entry_id, data in hass.data.get(DOMAIN, {}).items():
         if entry_id == DATA_SERVICES_REGISTERED:
             continue
         if target_entry_id is not None and entry_id != target_entry_id:
             continue
-        coordinator = data.get(DATA_COORDINATOR)
-        if isinstance(coordinator, SentrymoDataUpdateCoordinator):
-            yield coordinator
+        if isinstance(data, dict):
+            yield data

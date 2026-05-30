@@ -6,9 +6,19 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Any, Callable
 
-from homeassistant.components.sensor import SensorDeviceClass, SensorEntity, SensorEntityDescription, SensorStateClass
+from homeassistant.components.sensor import (
+    SensorDeviceClass,
+    SensorEntity,
+    SensorEntityDescription,
+    SensorStateClass,
+)
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.const import PERCENTAGE, UnitOfElectricPotential, UnitOfLength, UnitOfSpeed
+from homeassistant.const import (
+    PERCENTAGE,
+    UnitOfElectricPotential,
+    UnitOfLength,
+    UnitOfSpeed,
+)
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.util import dt as dt_util
@@ -16,6 +26,117 @@ from homeassistant.util import dt as dt_util
 from .const import DATA_COORDINATOR, DOMAIN
 from .coordinator import SentrymoDataUpdateCoordinator
 from .entity import SentrymoEntity
+
+
+def _parse_datetime(value: Any) -> datetime | None:
+    """Parse datetime values safely."""
+    if isinstance(value, str):
+        return dt_util.parse_datetime(value)
+    return value if isinstance(value, datetime) else None
+
+
+def _vehicle_state(vehicle: dict[str, Any]) -> dict[str, Any]:
+    """Return vehicle state dict safely."""
+    state = vehicle.get("state", {})
+    return state if isinstance(state, dict) else {}
+
+
+def _vehicle_location(vehicle: dict[str, Any]) -> dict[str, Any]:
+    """Return vehicle location dict safely."""
+    location = vehicle.get("location", {})
+    return location if isinstance(location, dict) else {}
+
+
+def _scale_gsm_signal(value: Any) -> int | None:
+    """Scale backend GSM signal strength to percentage."""
+    if not isinstance(value, (int, float)):
+        return None
+    if value <= 5:
+        return max(0, min(100, int(round((float(value) / 5) * 100))))
+    return max(0, min(100, int(value)))
+
+
+def _bool_to_text(value: Any) -> str | None:
+    """Convert boolean values to text."""
+    if value is None:
+        return None
+    return "on" if bool(value) else "off"
+
+
+def _first_value(vehicle: dict[str, Any], *keys: str) -> Any:
+    """Return first non-null state value by key."""
+    state = _vehicle_state(vehicle)
+    for key in keys:
+        value = state.get(key)
+        if value is not None:
+            return value
+    return None
+
+
+def _battery_percent(vehicle: dict[str, Any]) -> Any:
+    """Return internal battery percentage from the new backend fields."""
+    return _first_value(
+        vehicle,
+        "internal_battery_percent",
+        "battery_level_percent",
+        "internal_battery_level",
+    )
+
+
+def _address(vehicle: dict[str, Any]) -> str | None:
+    """Return address from location or state."""
+    for source in (_vehicle_location(vehicle), _vehicle_state(vehicle)):
+        value = source.get("address")
+        if isinstance(value, str) and value.strip():
+            return value.strip()
+    return None
+
+
+def _places(vehicle: dict[str, Any]) -> str | None:
+    """Return a comma separated list of place names."""
+    state = _vehicle_state(vehicle)
+    value = state.get("places")
+    if value is None:
+        value = _vehicle_location(vehicle).get("places")
+
+    if isinstance(value, list):
+        names = [str(item).strip() for item in value if str(item).strip()]
+        return ", ".join(names) if names else None
+
+    if isinstance(value, str) and value.strip():
+        return value.strip()
+
+    return None
+
+
+def _vehicle_status(vehicle: dict[str, Any]) -> str:
+    """Build a compact text status."""
+    state = _vehicle_state(vehicle)
+    alarm_state = state.get("alarm_state")
+    crash_state = state.get("crash_state")
+
+    if isinstance(crash_state, str) and crash_state not in {"", "idle", "cleared", "resolved", "dismissed"}:
+        return "crash"
+
+    if isinstance(alarm_state, str) and alarm_state not in {"", "idle", "cleared", "resolved", "dismissed", "seen"}:
+        return "alarm"
+
+    if state.get("crash_detected"):
+        return "crash"
+
+    if state.get("alarm_active"):
+        return "alarm"
+
+    if state.get("moving"):
+        return "moving"
+
+    if state.get("ignition"):
+        return "ignition_on"
+
+    if state.get("online") is False:
+        return "offline"
+
+    return "idle"
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -32,15 +153,15 @@ SENSOR_DESCRIPTIONS: tuple[SentrymoSensorDescription, ...] = (
         native_unit_of_measurement=UnitOfSpeed.KILOMETERS_PER_HOUR,
         device_class=SensorDeviceClass.SPEED,
         state_class=SensorStateClass.MEASUREMENT,
-        value_fn=lambda vehicle: vehicle.get("state", {}).get("speed_kmh"),
+        value_fn=lambda vehicle: _vehicle_state(vehicle).get("speed_kmh"),
     ),
     SentrymoSensorDescription(
-        key="battery_voltage",
-        translation_key="battery_voltage",
-        native_unit_of_measurement=UnitOfElectricPotential.VOLT,
-        device_class=SensorDeviceClass.VOLTAGE,
+        key="engine_rpm",
+        translation_key="engine_rpm",
+        native_unit_of_measurement="rpm",
         state_class=SensorStateClass.MEASUREMENT,
-        value_fn=lambda vehicle: vehicle.get("state", {}).get("battery_voltage"),
+        entity_registry_enabled_default=False,
+        value_fn=lambda vehicle: _vehicle_state(vehicle).get("engine_rpm"),
     ),
     SentrymoSensorDescription(
         key="external_voltage",
@@ -48,21 +169,29 @@ SENSOR_DESCRIPTIONS: tuple[SentrymoSensorDescription, ...] = (
         native_unit_of_measurement=UnitOfElectricPotential.VOLT,
         device_class=SensorDeviceClass.VOLTAGE,
         state_class=SensorStateClass.MEASUREMENT,
-        value_fn=lambda vehicle: vehicle.get("state", {}).get("external_voltage"),
+        value_fn=lambda vehicle: _vehicle_state(vehicle).get("external_voltage"),
+    ),
+    SentrymoSensorDescription(
+        key="internal_battery",
+        translation_key="internal_battery",
+        native_unit_of_measurement=PERCENTAGE,
+        device_class=SensorDeviceClass.BATTERY,
+        state_class=SensorStateClass.MEASUREMENT,
+        value_fn=_battery_percent,
     ),
     SentrymoSensorDescription(
         key="fuel_level",
         translation_key="fuel_level",
         native_unit_of_measurement=PERCENTAGE,
         state_class=SensorStateClass.MEASUREMENT,
-        value_fn=lambda vehicle: vehicle.get("state", {}).get("fuel_level_percent") or vehicle.get("state", {}).get("fuel_level"),
+        value_fn=lambda vehicle: _first_value(vehicle, "fuel_level_percent", "fuel_level"),
     ),
     SentrymoSensorDescription(
         key="gsm_signal",
         translation_key="gsm_signal",
         native_unit_of_measurement=PERCENTAGE,
         state_class=SensorStateClass.MEASUREMENT,
-        value_fn=lambda vehicle: _scale_gsm_signal(vehicle.get("state", {}).get("gsm_signal")),
+        value_fn=lambda vehicle: _scale_gsm_signal(_vehicle_state(vehicle).get("gsm_signal")),
     ),
     SentrymoSensorDescription(
         key="odometer",
@@ -70,23 +199,91 @@ SENSOR_DESCRIPTIONS: tuple[SentrymoSensorDescription, ...] = (
         native_unit_of_measurement=UnitOfLength.KILOMETERS,
         device_class=SensorDeviceClass.DISTANCE,
         state_class=SensorStateClass.TOTAL_INCREASING,
-        value_fn=lambda vehicle: vehicle.get("state", {}).get("odometer_km"),
+        value_fn=lambda vehicle: _vehicle_state(vehicle).get("odometer_km"),
+    ),
+    SentrymoSensorDescription(
+        key="engine_temperature",
+        translation_key="engine_temperature",
+        native_unit_of_measurement="°C",
+        device_class=SensorDeviceClass.TEMPERATURE,
+        state_class=SensorStateClass.MEASUREMENT,
+        entity_registry_enabled_default=False,
+        value_fn=lambda vehicle: _vehicle_state(vehicle).get("engine_temperature"),
+    ),
+    SentrymoSensorDescription(
+        key="satellites",
+        translation_key="satellites",
+        state_class=SensorStateClass.MEASUREMENT,
+        entity_registry_enabled_default=False,
+        value_fn=lambda vehicle: _vehicle_state(vehicle).get("satellites"),
+    ),
+    SentrymoSensorDescription(
+        key="hdop",
+        translation_key="hdop",
+        state_class=SensorStateClass.MEASUREMENT,
+        entity_registry_enabled_default=False,
+        value_fn=lambda vehicle: _vehicle_state(vehicle).get("hdop"),
     ),
     SentrymoSensorDescription(
         key="last_update",
         translation_key="last_update",
         device_class=SensorDeviceClass.TIMESTAMP,
-        value_fn=lambda vehicle: _parse_datetime(vehicle.get("updated_at") or vehicle.get("state", {}).get("last_seen_at")),
-    ),
-    SentrymoSensorDescription(
-        key="ignition_state",
-        translation_key="ignition_state",
-        value_fn=lambda vehicle: _bool_to_text(vehicle.get("state", {}).get("ignition")),
+        value_fn=lambda vehicle: _parse_datetime(
+            vehicle.get("updated_at") or _vehicle_state(vehicle).get("last_seen_at")
+        ),
     ),
     SentrymoSensorDescription(
         key="vehicle_status",
         translation_key="vehicle_status",
         value_fn=_vehicle_status,
+    ),
+    SentrymoSensorDescription(
+        key="alarm_state",
+        translation_key="alarm_state",
+        value_fn=lambda vehicle: _vehicle_state(vehicle).get("alarm_state"),
+    ),
+    SentrymoSensorDescription(
+        key="crash_state",
+        translation_key="crash_state",
+        value_fn=lambda vehicle: _vehicle_state(vehicle).get("crash_state"),
+    ),
+    SentrymoSensorDescription(
+        key="protection_mode",
+        translation_key="protection_mode",
+        value_fn=lambda vehicle: _vehicle_state(vehicle).get("protection_mode"),
+    ),
+    SentrymoSensorDescription(
+        key="sleep_state",
+        translation_key="sleep_state",
+        value_fn=lambda vehicle: _vehicle_state(vehicle).get("sleep_state"),
+    ),
+    SentrymoSensorDescription(
+        key="gnss_state",
+        translation_key="gnss_state",
+        value_fn=lambda vehicle: _vehicle_state(vehicle).get("gnss_state"),
+    ),
+    SentrymoSensorDescription(
+        key="data_mode",
+        translation_key="data_mode",
+        value_fn=lambda vehicle: _vehicle_state(vehicle).get("data_mode"),
+    ),
+    SentrymoSensorDescription(
+        key="ignition_state",
+        translation_key="ignition_state",
+        entity_registry_enabled_default=False,
+        value_fn=lambda vehicle: _bool_to_text(_vehicle_state(vehicle).get("ignition")),
+    ),
+    SentrymoSensorDescription(
+        key="address",
+        translation_key="address",
+        entity_registry_enabled_default=False,
+        value_fn=_address,
+    ),
+    SentrymoSensorDescription(
+        key="places",
+        translation_key="places",
+        entity_registry_enabled_default=False,
+        value_fn=_places,
     ),
 )
 
@@ -102,14 +299,22 @@ async def async_setup_entry(
 
     def _build_entities() -> list[SentrymoSensor]:
         entities: list[SentrymoSensor] = []
+
         for vehicle in coordinator.vehicles:
-            vehicle_id = str(vehicle.get("vehicle_id"))
+            vehicle_id = vehicle.get("vehicle_id")
+            if vehicle_id is None:
+                continue
+
+            vehicle_id_str = str(vehicle_id)
+
             for description in SENSOR_DESCRIPTIONS:
-                marker = (vehicle_id, description.key)
+                marker = (vehicle_id_str, description.key)
                 if marker in known_entity_keys:
                     continue
+
                 known_entity_keys.add(marker)
-                entities.append(SentrymoSensor(coordinator, vehicle_id, description))
+                entities.append(SentrymoSensor(coordinator, vehicle_id_str, description))
+
         return entities
 
     entities = _build_entities()
@@ -147,42 +352,3 @@ class SentrymoSensor(SentrymoEntity, SensorEntity):
     def native_value(self) -> Any:
         """Return native value."""
         return self.entity_description.value_fn(self.vehicle)
-
-
-def _parse_datetime(value: Any) -> datetime | None:
-    """Parse datetime values safely."""
-    if isinstance(value, str):
-        return dt_util.parse_datetime(value)
-    return value if isinstance(value, datetime) else None
-
-
-def _scale_gsm_signal(value: Any) -> int | None:
-    """Scale backend GSM signal strength to percentage."""
-    if not isinstance(value, (int, float)):
-        return None
-    if value <= 5:
-        return max(0, min(100, int(round((float(value) / 5) * 100))))
-    return max(0, min(100, int(value)))
-
-
-def _bool_to_text(value: Any) -> str | None:
-    """Convert boolean values to text."""
-    if value is None:
-        return None
-    return "on" if bool(value) else "off"
-
-
-def _vehicle_status(vehicle: dict[str, Any]) -> str:
-    """Build a compact text status."""
-    state = vehicle.get("state", {})
-    if state.get("alarm_active"):
-        return "alarm"
-    if state.get("crash_detected"):
-        return "crash"
-    if state.get("moving"):
-        return "moving"
-    if state.get("ignition"):
-        return "ignition_on"
-    if state.get("online") is False:
-        return "offline"
-    return "idle"

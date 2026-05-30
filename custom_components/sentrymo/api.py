@@ -53,6 +53,8 @@ class SentrymoInvalidAuth(SentrymoAuthError):
 class SentrymoPackageUnavailable(SentrymoApiError):
     """Raised when the user package does not support the integration."""
 
+class SentrymoRateLimited(SentrymoApiError):
+    """Raised when a segment is polled too frequently."""
 
 class SentrymoCommandError(SentrymoApiError):
     """Raised when a command request fails."""
@@ -255,6 +257,13 @@ class SentrymoApiClient:
         for segment, path in segment_paths.items():
             try:
                 response = await self._get_segment(segment, path)
+            except SentrymoRateLimited as err:
+                _LOGGER.debug(
+                    "Skipping Sentrymo segment %s because backend asked us to wait: %s",
+                    segment,
+                    err,
+                )
+                continue
             except SentrymoApiError as err:
                 _LOGGER.warning(
                     "Skipping Sentrymo segment %s because it failed: %s",
@@ -313,6 +322,34 @@ class SentrymoApiClient:
             "post",
             f"/vehicles/{vehicle_id}/commands/{command}",
             json_payload=command_payload,
+        )
+
+    async def async_set_protection_active(
+        self,
+        vehicle_id: int | str,
+        enabled: bool,
+    ) -> dict[str, Any]:
+        """Enable or disable vehicle protection."""
+        from .const import COMMAND_PROTECTION_SET_ACTIVE
+
+        return await self.async_send_command(
+            vehicle_id,
+            COMMAND_PROTECTION_SET_ACTIVE,
+            {"enabled": bool(enabled)},
+        )
+
+    async def async_set_protection_mode(
+        self,
+        vehicle_id: int | str,
+        mode: str,
+    ) -> dict[str, Any]:
+        """Set vehicle protection mode."""
+        from .const import COMMAND_PROTECTION_SET_MODE
+
+        return await self.async_send_command(
+            vehicle_id,
+            COMMAND_PROTECTION_SET_MODE,
+            {"mode": mode},
         )
 
     async def _get_segment(self, segment: str, path: str) -> dict[str, Any]:
@@ -423,7 +460,7 @@ class SentrymoApiClient:
             raise SentrymoInvalidAuth(message)
 
         if response.status == 429:
-            raise SentrymoApiError(message or "Rate limited")
+            raise SentrymoRateLimited(message or "Polling too frequently.")
 
         if response.status in (401, 403):
             if code == "package_required":

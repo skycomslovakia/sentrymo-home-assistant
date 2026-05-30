@@ -15,8 +15,8 @@ from .entity import SentrymoEntity
 # We intentionally expose only refresh actions until commands can be invoked
 # without persisting CPIN in Home Assistant configuration or automations.
 REFRESH_DESCRIPTION = ButtonEntityDescription(
-    key="refresh_snapshot",
-    translation_key="refresh_snapshot",
+    key="refresh_data",
+    translation_key="refresh_data",
 )
 
 

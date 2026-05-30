@@ -3,42 +3,42 @@
     "step": {
       "user": {
         "title": "Sentrymo",
-        "description": "Prepoj svoje Sentrymo vozidlá s Home Assistant.",
+        "description": "Propoj svá vozidla Sentrymo s Home Assistantem.",
         "data": {
-          "name": "Názov",
+          "name": "Název",
           "api_url": "Adresa API",
-          "setup_key": "Párovací kľúč",
+          "setup_key": "Párovací klíč",
           "cpin": "CPIN"
         }
       },
       "reauth_confirm": {
-        "title": "Znovu pripojiť Sentrymo",
-        "description": "Zadaj nový párovací kľúč a 4-miestny CPIN zo Sentrymo aplikácie.",
+        "title": "Znovu připojit Sentrymo",
+        "description": "Zadej nový párovací klíč a 4místný CPIN z aplikace Sentrymo.",
         "data": {
           "api_url": "Adresa API",
-          "setup_key": "Párovací kľúč",
+          "setup_key": "Párovací klíč",
           "cpin": "CPIN"
         }
       }
     },
     "error": {
-      "cannot_connect": "Pripojenie zlyhalo",
-      "invalid_auth": "Neplatný párovací kľúč alebo CPIN",
-      "invalid_cpin": "CPIN musí mať presne 4 číslice",
-      "package_unavailable": "Home Assistant integrácia nie je dostupná pre tento balík",
-      "setup_key_expired": "Párovací kľúč expiroval alebo už bol použitý",
-      "unknown": "Neočakávaná chyba"
+      "cannot_connect": "Připojení selhalo",
+      "invalid_auth": "Neplatný párovací klíč nebo CPIN",
+      "invalid_cpin": "CPIN musí mít přesně 4 číslice",
+      "package_unavailable": "Integrace Home Assistant není pro tento balíček dostupná",
+      "setup_key_expired": "Párovací klíč vypršel nebo už byl použit",
+      "unknown": "Neočekávaná chyba"
     },
     "abort": {
-      "already_configured": "Sentrymo je už nastavené",
-      "reauth_successful": "Sentrymo bolo úspešne znovu pripojené"
+      "already_configured": "Sentrymo už je nastavené",
+      "reauth_successful": "Sentrymo bylo úspěšně znovu připojeno"
     }
   },
   "options": {
     "step": {
       "init": {
         "title": "Možnosti Sentrymo",
-        "description": "Uprav adresu API používanú touto integráciou.",
+        "description": "Uprav adresu API používanou touto integrací.",
         "data": {
           "api_url": "Adresa API"
         }
@@ -53,16 +53,16 @@
     },
     "sensor": {
       "speed": {
-        "name": "Rýchlosť"
+        "name": "Rychlost"
       },
       "engine_rpm": {
-        "name": "Otáčky motora"
+        "name": "Otáčky motoru"
       },
       "external_voltage": {
-        "name": "Napájacie napätie"
+        "name": "Napájecí napětí"
       },
       "internal_battery": {
-        "name": "Interná batéria"
+        "name": "Interní baterie"
       },
       "fuel_level": {
         "name": "Palivo"
@@ -71,19 +71,19 @@
         "name": "GSM signál"
       },
       "odometer": {
-        "name": "Najazdené kilometre"
+        "name": "Najeté kilometry"
       },
       "engine_temperature": {
-        "name": "Teplota motora"
+        "name": "Teplota motoru"
       },
       "satellites": {
         "name": "Satelity"
       },
       "hdop": {
-        "name": "Presnosť GPS"
+        "name": "Přesnost GPS"
       },
       "last_update": {
-        "name": "Posledná aktualizácia"
+        "name": "Poslední aktualizace"
       },
       "vehicle_status": {
         "name": "Stav vozidla"
@@ -104,16 +104,16 @@
         "name": "Stav GNSS"
       },
       "data_mode": {
-        "name": "Dátový režim"
+        "name": "Datový režim"
       },
       "ignition_state": {
-        "name": "Stav zapaľovania"
+        "name": "Stav zapalování"
       },
       "address": {
         "name": "Adresa"
       },
       "places": {
-        "name": "Miesta"
+        "name": "Místa"
       }
     },
     "binary_sensor": {
@@ -121,48 +121,48 @@
         "name": "Pohyb"
       },
       "driving": {
-        "name": "Jazda"
+        "name": "Jízda"
       },
       "ignition": {
-        "name": "Zapaľovanie"
+        "name": "Zapalování"
       },
       "acc": {
-        "name": "Príslušenstvo"
+        "name": "Příslušenství"
       },
       "immo": {
         "name": "Imobilizér"
       },
       "locked": {
-        "name": "Zamknuté"
+        "name": "Zamčeno"
       },
       "protection_active": {
-        "name": "Ochrana aktívna"
+        "name": "Ochrana aktivní"
       },
       "alarm_active": {
-        "name": "Alarm aktívny"
+        "name": "Alarm aktivní"
       },
       "online": {
         "name": "Online"
       },
       "charging": {
-        "name": "Nabíjanie"
+        "name": "Nabíjení"
       },
       "crash_detected": {
-        "name": "Detekcia nárazu"
+        "name": "Detekce nárazu"
       },
       "low_voltage": {
-        "name": "Nízke napätie"
+        "name": "Nízké napětí"
       },
       "doors_open": {
-        "name": "Otvorené dvere"
+        "name": "Otevřené dveře"
       },
       "bt_connected": {
-        "name": "Bluetooth pripojené"
+        "name": "Bluetooth připojeno"
       }
     },
     "button": {
       "refresh_data": {
-        "name": "Aktualizovať údaje"
+        "name": "Aktualizovat údaje"
       }
     },
     "switch": {

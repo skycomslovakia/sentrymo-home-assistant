@@ -4,7 +4,8 @@ from __future__ import annotations
 
 from typing import Any
 
-from homeassistant.components.device_tracker import SourceType, TrackerEntity
+from homeassistant.components.device_tracker.const import SourceType
+from homeassistant.components.device_tracker.config_entry import TrackerEntity
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
@@ -85,7 +86,7 @@ class SentrymoTrackerEntity(SentrymoEntity, TrackerEntity):
     @property
     def battery_level(self) -> int | None:
         """Return battery or fuel level if available."""
-        for key in ("fuel_level_percent", "fuel_level"):
+        for key in ("internal_battery_percent", "battery_level_percent", "internal_battery_level", "fuel_level_percent", "fuel_level"):
             value = self.vehicle_state.get(key)
             if isinstance(value, (int, float)):
                 return max(0, min(100, int(value)))
@@ -107,5 +108,13 @@ class SentrymoTrackerEntity(SentrymoEntity, TrackerEntity):
             "ignition": self.vehicle_state.get("ignition"),
             "moving": self.vehicle_state.get("moving"),
             "alarm_active": self.vehicle_state.get("alarm_active"),
+            "alarm_state": self.vehicle_state.get("alarm_state"),
+            "crash_state": self.vehicle_state.get("crash_state"),
             "protection_active": self.vehicle_state.get("protection_active"),
+            "protection_mode": self.vehicle_state.get("protection_mode"),
+            "acc": self.vehicle_state.get("acc"),
+            "immo": self.vehicle_state.get("immo"),
+            "locked": self.vehicle_state.get("locked"),
+            "address": self.vehicle_state.get("address") or self.vehicle_location.get("address"),
+            "places": self.vehicle_state.get("places") or self.vehicle_location.get("places"),
         }
