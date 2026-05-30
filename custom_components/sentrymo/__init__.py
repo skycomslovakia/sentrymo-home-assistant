@@ -20,6 +20,7 @@ from .const import (
     CONF_API_URL,
     CONF_CPIN,
     CONF_REFRESH_TOKEN,
+    CONF_SETUP_KEY,
     CONF_TOKEN_EXPIRES_AT,
     DATA_CLIENT,
     DATA_COORDINATOR,
@@ -58,6 +59,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         cpin=entry.data.get(CONF_CPIN),
         token_update_callback=_async_update_tokens,
     )
+    await _async_restore_tokens(entry, client, hass)
     coordinator = SentrymoDataUpdateCoordinator(hass, client)
     await coordinator.async_config_entry_first_refresh()
 
@@ -85,6 +87,42 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 async def async_reload_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:
     """Reload a config entry when options or tokens change."""
     await hass.config_entries.async_reload(entry.entry_id)
+
+
+async def _async_restore_tokens(
+    entry: ConfigEntry,
+    client: SentrymoApiClient,
+    hass: HomeAssistant,
+) -> None:
+    """Restore missing tokens for legacy entries before the first refresh."""
+    if client.access_token:
+        return
+
+    if client.refresh_token:
+        await client.async_refresh_token()
+        return
+
+    setup_key = entry.data.get(CONF_SETUP_KEY)
+    if not isinstance(setup_key, str) or not setup_key:
+        return
+
+    await client.async_exchange_setup_key(
+        entry.options.get(CONF_API_URL, entry.data[CONF_API_URL]),
+        setup_key,
+        str(entry.data.get(CONF_CPIN) or ""),
+        client_name=str(entry.title or "Sentrymo"),
+    )
+
+    data = dict(entry.data)
+    data.update(
+        {
+            CONF_API_URL: client.api_url,
+            CONF_ACCESS_TOKEN: client.access_token,
+            CONF_REFRESH_TOKEN: client.refresh_token,
+            CONF_TOKEN_EXPIRES_AT: client.token_expires_at,
+        }
+    )
+    hass.config_entries.async_update_entry(entry, data=data)
 
 
 async def _async_register_services(hass: HomeAssistant) -> None:

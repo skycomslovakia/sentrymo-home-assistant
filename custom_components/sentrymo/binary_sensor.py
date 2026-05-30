@@ -56,7 +56,6 @@ BINARY_SENSOR_DESCRIPTIONS: tuple[SentrymoBinarySensorDescription, ...] = (
     SentrymoBinarySensorDescription(
         key="immo",
         translation_key="immo",
-        device_class=BinarySensorDeviceClass.SAFETY,
         value_fn=lambda vehicle: _state(vehicle).get("immo"),
     ),
     SentrymoBinarySensorDescription(
@@ -68,7 +67,6 @@ BINARY_SENSOR_DESCRIPTIONS: tuple[SentrymoBinarySensorDescription, ...] = (
     SentrymoBinarySensorDescription(
         key="protection_active",
         translation_key="protection_active",
-        device_class=BinarySensorDeviceClass.SAFETY,
         always_create=True,
         value_fn=lambda vehicle: _state(vehicle).get("protection_active"),
     ),

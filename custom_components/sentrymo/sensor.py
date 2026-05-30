@@ -108,13 +108,13 @@ def _vehicle_status(vehicle: dict[str, Any]) -> str:
     alarm_state = state.get("alarm_state")
     crash_state = state.get("crash_state")
 
-    if isinstance(crash_state, str) and crash_state not in {"", "idle", "cleared", "resolved", "dismissed"}:
+    if isinstance(crash_state, str) and crash_state not in {"", "idle", "dismissed"}:
         return "crash"
-    if isinstance(alarm_state, str) and alarm_state not in {"", "idle", "cleared", "resolved", "dismissed", "seen"}:
+    if isinstance(alarm_state, str) and alarm_state not in {"", "idle", "dismissed"}:
         return "alarm"
     if state.get("crash_detected"):
         return "crash"
-    if state.get("alarm_active"):
+    if state.get("alarm_active") and not isinstance(alarm_state, str):
         return "alarm"
     if state.get("moving"):
         return "moving"
