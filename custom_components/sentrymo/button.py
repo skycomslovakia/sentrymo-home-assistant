@@ -11,11 +11,10 @@ from .const import DATA_COORDINATOR, DOMAIN
 from .coordinator import SentrymoDataUpdateCoordinator
 from .entity import SentrymoEntity
 
-# The backend currently requires a runtime CPIN header for protection commands.
-# We intentionally expose only refresh actions until commands can be invoked
-# without persisting CPIN in Home Assistant configuration or automations.
+# Keep the entity key `refresh_snapshot` for backward compatibility with older releases,
+# but show it in UI as "Refresh data" through translation_key.
 REFRESH_DESCRIPTION = ButtonEntityDescription(
-    key="refresh_data",
+    key="refresh_snapshot",
     translation_key="refresh_data",
 )
 
@@ -32,11 +31,14 @@ async def async_setup_entry(
     def _build_entities() -> list[SentrymoRefreshButton]:
         entities: list[SentrymoRefreshButton] = []
         for vehicle in coordinator.vehicles:
-            vehicle_id = str(vehicle.get("vehicle_id"))
-            if vehicle_id in known_vehicle_ids:
+            vehicle_id = vehicle.get("vehicle_id")
+            if vehicle_id is None:
                 continue
-            known_vehicle_ids.add(vehicle_id)
-            entities.append(SentrymoRefreshButton(coordinator, vehicle_id))
+            vehicle_id_str = str(vehicle_id)
+            if vehicle_id_str in known_vehicle_ids:
+                continue
+            known_vehicle_ids.add(vehicle_id_str)
+            entities.append(SentrymoRefreshButton(coordinator, vehicle_id_str))
         return entities
 
     entities = _build_entities()
@@ -54,7 +56,7 @@ async def async_setup_entry(
 
 
 class SentrymoRefreshButton(SentrymoEntity, ButtonEntity):
-    """Refresh a vehicle snapshot on demand."""
+    """Refresh vehicle data on demand."""
 
     entity_description = REFRESH_DESCRIPTION
     _attr_has_entity_name = True
@@ -65,5 +67,5 @@ class SentrymoRefreshButton(SentrymoEntity, ButtonEntity):
         self._attr_translation_key = REFRESH_DESCRIPTION.translation_key
 
     async def async_press(self) -> None:
-        """Refresh the coordinator snapshot."""
-        await self.coordinator.async_request_refresh()
+        """Force refresh the coordinator snapshot."""
+        await self.coordinator.async_force_refresh()

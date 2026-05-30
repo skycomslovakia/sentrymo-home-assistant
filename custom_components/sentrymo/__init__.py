@@ -13,12 +13,12 @@ from homeassistant.helpers.typing import ConfigType
 
 from .api import SentrymoApiClient
 from .const import (
-    ATTR_ENABLED,
     ATTR_ENTRY_ID,
     ATTR_MODE,
     ATTR_VEHICLE_ID,
     CONF_ACCESS_TOKEN,
     CONF_API_URL,
+    CONF_CPIN,
     CONF_REFRESH_TOKEN,
     CONF_TOKEN_EXPIRES_AT,
     DATA_CLIENT,
@@ -28,7 +28,6 @@ from .const import (
     PLATFORMS,
     PROTECTION_MODE_OPTIONS,
     SERVICE_REFRESH,
-    SERVICE_SET_PROTECTION,
     SERVICE_SET_PROTECTION_MODE,
 )
 from .coordinator import SentrymoDataUpdateCoordinator
@@ -56,6 +55,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         access_token=entry.data.get(CONF_ACCESS_TOKEN),
         refresh_token=entry.data.get(CONF_REFRESH_TOKEN),
         token_expires_at=entry.data.get(CONF_TOKEN_EXPIRES_AT),
+        cpin=entry.data.get(CONF_CPIN),
         token_update_callback=_async_update_tokens,
     )
     coordinator = SentrymoDataUpdateCoordinator(hass, client)
@@ -94,18 +94,7 @@ async def _async_register_services(hass: HomeAssistant) -> None:
 
     async def async_handle_refresh(call: ServiceCall) -> None:
         for coordinator in _iter_coordinators(hass, call.data.get(ATTR_ENTRY_ID)):
-            await coordinator.async_request_refresh()
-
-    async def async_handle_set_protection(call: ServiceCall) -> None:
-        vehicle_id = str(call.data[ATTR_VEHICLE_ID])
-        enabled = bool(call.data[ATTR_ENABLED])
-        for data in _iter_entry_data(hass, call.data.get(ATTR_ENTRY_ID)):
-            coordinator = data[DATA_COORDINATOR]
-            if coordinator.vehicle_by_id(vehicle_id) is None:
-                continue
-            await data[DATA_CLIENT].async_set_protection_active(vehicle_id, enabled)
-            await coordinator.async_request_refresh()
-            return
+            await coordinator.async_force_refresh()
 
     async def async_handle_set_protection_mode(call: ServiceCall) -> None:
         vehicle_id = str(call.data[ATTR_VEHICLE_ID])
@@ -115,7 +104,7 @@ async def _async_register_services(hass: HomeAssistant) -> None:
             if coordinator.vehicle_by_id(vehicle_id) is None:
                 continue
             await data[DATA_CLIENT].async_set_protection_mode(vehicle_id, mode)
-            await coordinator.async_request_refresh()
+            await coordinator.async_force_refresh()
             return
 
     hass.services.async_register(
@@ -123,18 +112,6 @@ async def _async_register_services(hass: HomeAssistant) -> None:
         SERVICE_REFRESH,
         async_handle_refresh,
         schema=vol.Schema({vol.Optional(ATTR_ENTRY_ID): str}),
-    )
-    hass.services.async_register(
-        DOMAIN,
-        SERVICE_SET_PROTECTION,
-        async_handle_set_protection,
-        schema=vol.Schema(
-            {
-                vol.Required(ATTR_VEHICLE_ID): vol.Coerce(str),
-                vol.Required(ATTR_ENABLED): bool,
-                vol.Optional(ATTR_ENTRY_ID): str,
-            }
-        ),
     )
     hass.services.async_register(
         DOMAIN,
@@ -153,7 +130,7 @@ async def _async_register_services(hass: HomeAssistant) -> None:
 
 async def _async_unregister_services(hass: HomeAssistant) -> None:
     """Unregister services when no entries remain."""
-    for service in (SERVICE_REFRESH, SERVICE_SET_PROTECTION, SERVICE_SET_PROTECTION_MODE):
+    for service in (SERVICE_REFRESH, SERVICE_SET_PROTECTION_MODE):
         if hass.services.has_service(DOMAIN, service):
             hass.services.async_remove(DOMAIN, service)
     hass.data[DOMAIN].pop(DATA_SERVICES_REGISTERED, None)

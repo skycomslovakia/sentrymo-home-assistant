@@ -27,17 +27,14 @@ DATA_SERVICES_REGISTERED = "services_registered"
 
 ATTR_ENTRY_ID = "entry_id"
 ATTR_VEHICLE_ID = "vehicle_id"
-ATTR_ENABLED = "enabled"
 ATTR_MODE = "mode"
 
 SERVICE_REFRESH = "refresh"
-SERVICE_SET_PROTECTION = "set_protection"
 SERVICE_SET_PROTECTION_MODE = "set_protection_mode"
 
-# These command identifiers must match the HA API command controller.
-# If backend uses different names, change only these constants.
-COMMAND_PROTECTION_SET_ACTIVE = "protection_set_active"
-COMMAND_PROTECTION_SET_MODE = "protection_set_mode"
+COMMAND_PROTECTION_ACTIVATE = "protection_activate"
+COMMAND_PROTECTION_DEACTIVATE = "protection_deactivate"
+COMMAND_PROTECTION_AUTO = "protection_auto"
 
 PROTECTION_MODE_DISABLED = "disabled"
 PROTECTION_MODE_MANUAL = "manual"
@@ -72,7 +69,6 @@ PLATFORMS = [
     Platform.DEVICE_TRACKER,
     Platform.SENSOR,
     Platform.BINARY_SENSOR,
-    Platform.SWITCH,
     Platform.SELECT,
     Platform.BUTTON,
 ]

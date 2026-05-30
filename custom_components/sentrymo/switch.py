@@ -9,7 +9,7 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
-from .const import DATA_CLIENT, DATA_COORDINATOR, DOMAIN
+from .const import DATA_CLIENT, DATA_COORDINATOR, DOMAIN, COMMAND_PROTECTION_ACTIVATE, COMMAND_PROTECTION_DEACTIVATE
 from .coordinator import SentrymoDataUpdateCoordinator
 from .entity import SentrymoEntity
 
@@ -37,9 +37,9 @@ def _supports_protection_commands(vehicle: dict[str, Any]) -> bool:
 
 
 async def async_setup_entry(
-    hass: HomeAssistant,
-    entry: ConfigEntry,
-    async_add_entities: AddEntitiesCallback,
+        hass: HomeAssistant,
+        entry: ConfigEntry,
+        async_add_entities: AddEntitiesCallback,
 ) -> bool:
     """Set up Sentrymo switches."""
     coordinator: SentrymoDataUpdateCoordinator = hass.data[DOMAIN][entry.entry_id][DATA_COORDINATOR]
@@ -80,10 +80,10 @@ class SentrymoProtectionSwitch(SentrymoEntity, SwitchEntity):
     _attr_translation_key = "protection"
 
     def __init__(
-        self,
-        coordinator: SentrymoDataUpdateCoordinator,
-        client: Any,
-        vehicle_id: str,
+            self,
+            coordinator: SentrymoDataUpdateCoordinator,
+            client: Any,
+            vehicle_id: str,
     ) -> None:
         """Initialize the switch."""
         super().__init__(coordinator, vehicle_id, "protection")
@@ -100,12 +100,16 @@ class SentrymoProtectionSwitch(SentrymoEntity, SwitchEntity):
         """Return switch availability."""
         return super().available and _supports_protection_commands(self.vehicle)
 
-    async def async_turn_on(self, **kwargs: Any) -> None:
-        """Enable protection."""
-        await self.client.async_set_protection_active(self.vehicle_id, True)
+    async def async_turn_on(self, **kwargs):
+        await self.coordinator.client.async_send_command(
+            self.vehicle_id,
+            COMMAND_PROTECTION_ACTIVATE,
+        )
         await self.coordinator.async_request_refresh()
 
-    async def async_turn_off(self, **kwargs: Any) -> None:
-        """Disable protection."""
-        await self.client.async_set_protection_active(self.vehicle_id, False)
+    async def async_turn_off(self, **kwargs):
+        await self.coordinator.client.async_send_command(
+            self.vehicle_id,
+            COMMAND_PROTECTION_DEACTIVATE,
+        )
         await self.coordinator.async_request_refresh()

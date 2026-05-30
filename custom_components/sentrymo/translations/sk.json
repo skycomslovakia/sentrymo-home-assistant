@@ -3,7 +3,7 @@
     "step": {
       "user": {
         "title": "Sentrymo",
-        "description": "Prepoj svoje Sentrymo vozidlá s Home Assistant.",
+        "description": "Prepoj svoje Sentrymo vozidlá s Home Assistantom.",
         "data": {
           "name": "Názov",
           "api_url": "Adresa API",
@@ -55,9 +55,6 @@
       "speed": {
         "name": "Rýchlosť"
       },
-      "engine_rpm": {
-        "name": "Otáčky motora"
-      },
       "external_voltage": {
         "name": "Napájacie napätie"
       },
@@ -72,15 +69,6 @@
       },
       "odometer": {
         "name": "Najazdené kilometre"
-      },
-      "engine_temperature": {
-        "name": "Teplota motora"
-      },
-      "satellites": {
-        "name": "Satelity"
-      },
-      "hdop": {
-        "name": "Presnosť GPS"
       },
       "last_update": {
         "name": "Posledná aktualizácia"
@@ -106,8 +94,17 @@
       "data_mode": {
         "name": "Dátový režim"
       },
-      "ignition_state": {
-        "name": "Stav zapaľovania"
+      "engine_rpm": {
+        "name": "Otáčky motora"
+      },
+      "engine_temperature": {
+        "name": "Teplota motora"
+      },
+      "satellites": {
+        "name": "Satelity"
+      },
+      "hdop": {
+        "name": "Presnosť GPS"
       },
       "address": {
         "name": "Adresa"
@@ -163,11 +160,6 @@
     "button": {
       "refresh_data": {
         "name": "Aktualizovať údaje"
-      }
-    },
-    "switch": {
-      "protection": {
-        "name": "Ochrana"
       }
     },
     "select": {

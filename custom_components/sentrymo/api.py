@@ -21,12 +21,18 @@ from .const import (
     API_STATE_SLOW,
     API_STATE_TELEMETRY,
     API_VEHICLES,
+    COMMAND_PROTECTION_ACTIVATE,
+    COMMAND_PROTECTION_AUTO,
+    COMMAND_PROTECTION_DEACTIVATE,
     CONF_ACCESS_TOKEN,
     CONF_REFRESH_TOKEN,
     CONF_TOKEN_EXPIRES_AT,
     DEFAULT_EXCHANGE_PAYLOAD,
     DEFAULT_PROD_API_URL,
     DEFAULT_SOURCE,
+    PROTECTION_MODE_AUTOMATIC,
+    PROTECTION_MODE_DISABLED,
+    PROTECTION_MODE_MANUAL,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -53,8 +59,10 @@ class SentrymoInvalidAuth(SentrymoAuthError):
 class SentrymoPackageUnavailable(SentrymoApiError):
     """Raised when the user package does not support the integration."""
 
+
 class SentrymoRateLimited(SentrymoApiError):
     """Raised when a segment is polled too frequently."""
+
 
 class SentrymoCommandError(SentrymoApiError):
     """Raised when a command request fails."""
@@ -75,6 +83,7 @@ class SentrymoApiClient:
         access_token: str | None = None,
         refresh_token: str | None = None,
         token_expires_at: str | None = None,
+        cpin: str | None = None,
         *,
         token_update_callback: TokenUpdateCallback | None = None,
     ) -> None:
@@ -84,6 +93,7 @@ class SentrymoApiClient:
         self.access_token = access_token
         self.refresh_token = refresh_token
         self.token_expires_at = token_expires_at
+        self.cpin = cpin
         self._token_update_callback = token_update_callback
         self._segment_cache: dict[str, dict[str, Any]] = {}
         self._segment_next_refresh: dict[str, Any] = {}
@@ -96,14 +106,17 @@ class SentrymoApiClient:
 
         if lowered.endswith("/ha-api/v1"):
             return base_url
-
         if lowered.endswith("/ha-api"):
             return f"{base_url}/v1"
-
         if "/ha-api/" in lowered:
             return base_url
 
         return f"{base_url}/ha-api/v1"
+
+    def clear_segment_cache(self) -> None:
+        """Clear cached state segments."""
+        self._segment_cache.clear()
+        self._segment_next_refresh.clear()
 
     def set_tokens(
         self,
@@ -113,14 +126,9 @@ class SentrymoApiClient:
         token_expires_at: str | None = None,
         access_token_expires_at: str | None = None,
     ) -> None:
-        """Update in-memory tokens.
-
-        `access_token_expires_at` is the config-entry storage key.
-        `token_expires_at` is the internal attribute name.
-        """
+        """Update in-memory tokens."""
         if access_token:
             self.access_token = access_token
-
         if refresh_token:
             self.refresh_token = refresh_token
 
@@ -139,6 +147,7 @@ class SentrymoApiClient:
     ) -> dict[str, Any]:
         """Exchange a setup key for tokens."""
         self.api_url = self.normalize_api_url(api_url)
+        self.cpin = cpin
 
         response = await self._request(
             "post",
@@ -188,7 +197,7 @@ class SentrymoApiClient:
         """Fetch vehicles payload."""
         return await self._request("get", API_VEHICLES)
 
-    async def async_get_snapshot(self) -> dict[str, Any]:
+    async def async_get_snapshot(self, *, force: bool = False) -> dict[str, Any]:
         """Fetch and merge profile, vehicles and optional state segments into one snapshot."""
         polling: dict[str, int] = {}
         merged: dict[str, dict[str, Any]] = {}
@@ -196,7 +205,9 @@ class SentrymoApiClient:
         account: dict[str, Any] = {}
         capabilities: dict[str, Any] = {}
 
-        # 1) Profile is the base source for account, polling and global capabilities.
+        if force:
+            self.clear_segment_cache()
+
         try:
             profile = await self.async_get_profile()
         except SentrymoApiError as err:
@@ -224,8 +235,6 @@ class SentrymoApiClient:
                 if isinstance(maybe_server_time, str):
                     server_time = maybe_server_time
 
-        # 2) Vehicles endpoint is the base source for HA devices.
-        # This makes the integration usable even if state segments are not ready yet.
         try:
             vehicles_response = await self.async_get_vehicles()
         except SentrymoApiError as err:
@@ -245,8 +254,6 @@ class SentrymoApiClient:
                 merged.setdefault(vehicle_id, {"vehicle_id": vehicle_id})
                 self._merge_vehicle_segment(merged[vehicle_id], dict(vehicle))
 
-        # 3) State segments enrich existing vehicles.
-        # A broken/missing segment must not break the whole integration.
         segment_paths = {
             "fast": API_STATE_FAST,
             "telemetry": API_STATE_TELEMETRY,
@@ -256,14 +263,17 @@ class SentrymoApiClient:
 
         for segment, path in segment_paths.items():
             try:
-                response = await self._get_segment(segment, path)
+                response = await self._get_segment(segment, path, force=force)
             except SentrymoRateLimited as err:
                 _LOGGER.debug(
                     "Skipping Sentrymo segment %s because backend asked us to wait: %s",
                     segment,
                     err,
                 )
-                continue
+                cached = self._segment_cache.get(segment)
+                if cached is None:
+                    continue
+                response = cached
             except SentrymoApiError as err:
                 _LOGGER.warning(
                     "Skipping Sentrymo segment %s because it failed: %s",
@@ -314,28 +324,18 @@ class SentrymoApiClient:
     ) -> dict[str, Any]:
         """Send a vehicle command."""
         command_payload = {"source": DEFAULT_SOURCE}
-
         if payload:
             command_payload.update(payload)
+
+        headers: dict[str, str] = {}
+        if self.cpin:
+            headers["X-Sentrymo-CPIN"] = self.cpin
 
         return await self._request(
             "post",
             f"/vehicles/{vehicle_id}/commands/{command}",
             json_payload=command_payload,
-        )
-
-    async def async_set_protection_active(
-        self,
-        vehicle_id: int | str,
-        enabled: bool,
-    ) -> dict[str, Any]:
-        """Enable or disable vehicle protection."""
-        from .const import COMMAND_PROTECTION_SET_ACTIVE
-
-        return await self.async_send_command(
-            vehicle_id,
-            COMMAND_PROTECTION_SET_ACTIVE,
-            {"enabled": bool(enabled)},
+            headers=headers,
         )
 
     async def async_set_protection_mode(
@@ -343,24 +343,30 @@ class SentrymoApiClient:
         vehicle_id: int | str,
         mode: str,
     ) -> dict[str, Any]:
-        """Set vehicle protection mode."""
-        from .const import COMMAND_PROTECTION_SET_MODE
+        """Set vehicle protection mode through backend-supported commands."""
+        command = {
+            PROTECTION_MODE_DISABLED: COMMAND_PROTECTION_DEACTIVATE,
+            PROTECTION_MODE_MANUAL: COMMAND_PROTECTION_ACTIVATE,
+            PROTECTION_MODE_AUTOMATIC: COMMAND_PROTECTION_AUTO,
+        }.get(mode)
 
-        return await self.async_send_command(
-            vehicle_id,
-            COMMAND_PROTECTION_SET_MODE,
-            {"mode": mode},
-        )
+        if command is None:
+            raise SentrymoCommandError(f"Unsupported protection mode: {mode}")
 
-    async def _get_segment(self, segment: str, path: str) -> dict[str, Any]:
+        return await self.async_send_command(vehicle_id, command, {"mode": mode})
+
+    async def _get_segment(self, segment: str, path: str, *, force: bool = False) -> dict[str, Any]:
         """Fetch a state segment with cache windows based on backend polling."""
         now = dt_util.utcnow()
         next_refresh = self._segment_next_refresh.get(segment)
 
-        if segment in self._segment_cache and next_refresh is not None and now < next_refresh:
+        if not force and segment in self._segment_cache and next_refresh is not None and now < next_refresh:
             return self._segment_cache[segment]
 
-        response = await self._request("get", path)
+        headers = {"X-Sentrymo-Force-Refresh": "1"} if force else None
+        request_path = f"{path}?force=1" if force and "?" not in path else path
+
+        response = await self._request("get", request_path, headers=headers)
         self._segment_cache[segment] = response
 
         recommended = response.get("recommended_poll_seconds")
@@ -369,7 +375,6 @@ class SentrymoApiClient:
             if isinstance(recommended, int) and recommended > 0
             else DEFAULT_EXCHANGE_PAYLOAD.get(segment, 60)
         )
-
         self._segment_next_refresh[segment] = now + timedelta(seconds=seconds)
 
         return response
@@ -409,7 +414,6 @@ class SentrymoApiClient:
 
         if response.status == 401 and allow_refresh and require_auth and self.refresh_token:
             _LOGGER.debug("Received 401 from Sentrymo API, attempting token refresh")
-
             try:
                 await self.async_refresh_token()
             except SentrymoApiError as err:
@@ -450,6 +454,7 @@ class SentrymoApiClient:
 
         code = str(body.get("code") or "")
         message = str(body.get("message") or f"Unexpected API error for {path}")
+        lower_message = message.lower()
 
         if response.status == 404 and path in {API_AUTH_EXCHANGE, API_AUTH_REFRESH}:
             raise SentrymoCannotConnect(
@@ -459,7 +464,7 @@ class SentrymoApiClient:
         if response.status == 422 and path == API_AUTH_EXCHANGE:
             raise SentrymoInvalidAuth(message)
 
-        if response.status == 429:
+        if response.status == 429 or "polling too frequently" in lower_message:
             raise SentrymoRateLimited(message or "Polling too frequently.")
 
         if response.status in (401, 403):
@@ -569,9 +574,6 @@ class SentrymoApiClient:
 
             target["state"].update(state_dict)
 
-        # Be tolerant to alternative backend shapes.
-        # Some segment payloads may come as {"telemetry": {...}} or {"slow": {...}}
-        # instead of directly under "state".
         for nested_key in ("fast", "telemetry", "slow"):
             nested = vehicle.get(nested_key)
             if isinstance(nested, Mapping):

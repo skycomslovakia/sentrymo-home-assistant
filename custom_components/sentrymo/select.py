@@ -101,6 +101,13 @@ class SentrymoProtectionModeSelect(SentrymoEntity, SelectEntity):
         value = _state(self.vehicle).get("protection_mode")
         if isinstance(value, str) and value in PROTECTION_MODE_OPTIONS:
             return value
+
+        if _state(self.vehicle).get("protection_active") is True:
+            return "manual"
+
+        if _state(self.vehicle).get("protection_active") is False:
+            return "disabled"
+
         return None
 
     @property
@@ -114,4 +121,4 @@ class SentrymoProtectionModeSelect(SentrymoEntity, SelectEntity):
             return
 
         await self.client.async_set_protection_mode(self.vehicle_id, option)
-        await self.coordinator.async_request_refresh()
+        await self.coordinator.async_force_refresh()

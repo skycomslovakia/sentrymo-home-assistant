@@ -41,6 +41,22 @@ class SentrymoDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         target = str(vehicle_id)
         return next((vehicle for vehicle in self.vehicles if str(vehicle.get("vehicle_id")) == target), None)
 
+    async def async_force_refresh(self) -> None:
+        """Force a manual refresh.
+
+        This bypasses the local segment cache and asks the backend for a forced refresh.
+        If the backend still rate-limits slow/config segments, cached data is reused.
+        """
+        try:
+            snapshot = await self.client.async_get_snapshot(force=True)
+        except (SentrymoInvalidAuth, SentrymoAuthError) as err:
+            raise ConfigEntryAuthFailed from err
+        except SentrymoApiError as err:
+            raise UpdateFailed(str(err)) from err
+
+        self.update_interval = self._parse_update_interval(snapshot)
+        self.async_set_updated_data(snapshot)
+
     async def _async_update_data(self) -> dict[str, Any]:
         """Fetch fresh data from the Sentrymo API."""
         try:

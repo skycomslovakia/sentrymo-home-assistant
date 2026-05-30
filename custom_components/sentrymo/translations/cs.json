@@ -3,7 +3,7 @@
     "step": {
       "user": {
         "title": "Sentrymo",
-        "description": "Propoj svá vozidla Sentrymo s Home Assistantem.",
+        "description": "Propoj svá Sentrymo vozidla s Home Assistantem.",
         "data": {
           "name": "Název",
           "api_url": "Adresa API",
@@ -53,16 +53,13 @@
     },
     "sensor": {
       "speed": {
-        "name": "Rychlost"
-      },
-      "engine_rpm": {
-        "name": "Otáčky motoru"
+        "name": "Rýchlosť"
       },
       "external_voltage": {
         "name": "Napájecí napětí"
       },
       "internal_battery": {
-        "name": "Interní baterie"
+        "name": "Interná batéria"
       },
       "fuel_level": {
         "name": "Palivo"
@@ -72,15 +69,6 @@
       },
       "odometer": {
         "name": "Najeté kilometry"
-      },
-      "engine_temperature": {
-        "name": "Teplota motoru"
-      },
-      "satellites": {
-        "name": "Satelity"
-      },
-      "hdop": {
-        "name": "Přesnost GPS"
       },
       "last_update": {
         "name": "Poslední aktualizace"
@@ -106,14 +94,23 @@
       "data_mode": {
         "name": "Datový režim"
       },
-      "ignition_state": {
-        "name": "Stav zapalování"
+      "engine_rpm": {
+        "name": "Otáčky motora"
+      },
+      "engine_temperature": {
+        "name": "Teplota motoru"
+      },
+      "satellites": {
+        "name": "Satelity"
+      },
+      "hdop": {
+        "name": "Přesnost GPS"
       },
       "address": {
         "name": "Adresa"
       },
       "places": {
-        "name": "Místa"
+        "name": "Miesta"
       }
     },
     "binary_sensor": {
@@ -163,11 +160,6 @@
     "button": {
       "refresh_data": {
         "name": "Aktualizovat údaje"
-      }
-    },
-    "switch": {
-      "protection": {
-        "name": "Ochrana"
       }
     },
     "select": {

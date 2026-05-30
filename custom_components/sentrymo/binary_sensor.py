@@ -30,6 +30,7 @@ class SentrymoBinarySensorDescription(BinarySensorEntityDescription):
     """Description for a Sentrymo binary sensor."""
 
     value_fn: Callable[[dict[str, Any]], Any]
+    always_create: bool = False
 
 
 BINARY_SENSOR_DESCRIPTIONS: tuple[SentrymoBinarySensorDescription, ...] = (
@@ -37,13 +38,8 @@ BINARY_SENSOR_DESCRIPTIONS: tuple[SentrymoBinarySensorDescription, ...] = (
         key="moving",
         translation_key="moving",
         device_class=BinarySensorDeviceClass.MOVING,
+        always_create=True,
         value_fn=lambda vehicle: _state(vehicle).get("moving"),
-    ),
-    SentrymoBinarySensorDescription(
-        key="driving",
-        translation_key="driving",
-        device_class=BinarySensorDeviceClass.MOVING,
-        value_fn=lambda vehicle: _state(vehicle).get("driving"),
     ),
     SentrymoBinarySensorDescription(
         key="ignition",
@@ -73,25 +69,41 @@ BINARY_SENSOR_DESCRIPTIONS: tuple[SentrymoBinarySensorDescription, ...] = (
         key="protection_active",
         translation_key="protection_active",
         device_class=BinarySensorDeviceClass.SAFETY,
+        always_create=True,
         value_fn=lambda vehicle: _state(vehicle).get("protection_active"),
     ),
     SentrymoBinarySensorDescription(
         key="alarm_active",
         translation_key="alarm_active",
         device_class=BinarySensorDeviceClass.PROBLEM,
+        always_create=True,
         value_fn=lambda vehicle: _state(vehicle).get("alarm_active"),
     ),
     SentrymoBinarySensorDescription(
         key="crash_detected",
         translation_key="crash_detected",
         device_class=BinarySensorDeviceClass.PROBLEM,
+        always_create=True,
         value_fn=lambda vehicle: _state(vehicle).get("crash_detected"),
     ),
     SentrymoBinarySensorDescription(
         key="online",
         translation_key="online",
         device_class=BinarySensorDeviceClass.CONNECTIVITY,
+        always_create=True,
         value_fn=lambda vehicle: _state(vehicle).get("online"),
+    ),
+    SentrymoBinarySensorDescription(
+        key="driving",
+        translation_key="driving",
+        device_class=BinarySensorDeviceClass.MOVING,
+        value_fn=lambda vehicle: _state(vehicle).get("driving"),
+    ),
+    SentrymoBinarySensorDescription(
+        key="low_voltage",
+        translation_key="low_voltage",
+        device_class=BinarySensorDeviceClass.BATTERY,
+        value_fn=lambda vehicle: _state(vehicle).get("is_low_voltage"),
     ),
     SentrymoBinarySensorDescription(
         key="charging",
@@ -99,12 +111,6 @@ BINARY_SENSOR_DESCRIPTIONS: tuple[SentrymoBinarySensorDescription, ...] = (
         device_class=BinarySensorDeviceClass.BATTERY_CHARGING,
         entity_registry_enabled_default=False,
         value_fn=lambda vehicle: _state(vehicle).get("charging"),
-    ),
-    SentrymoBinarySensorDescription(
-        key="low_voltage",
-        translation_key="low_voltage",
-        device_class=BinarySensorDeviceClass.BATTERY,
-        value_fn=lambda vehicle: _state(vehicle).get("is_low_voltage"),
     ),
     SentrymoBinarySensorDescription(
         key="doors_open",
@@ -132,6 +138,9 @@ async def async_setup_entry(
     coordinator: SentrymoDataUpdateCoordinator = hass.data[DOMAIN][entry.entry_id][DATA_COORDINATOR]
     known_entity_keys: set[tuple[str, str]] = set()
 
+    def _should_create(vehicle: dict[str, Any], description: SentrymoBinarySensorDescription) -> bool:
+        return description.always_create or description.value_fn(vehicle) is not None
+
     def _build_entities() -> list[SentrymoBinarySensor]:
         entities: list[SentrymoBinarySensor] = []
         for vehicle in coordinator.vehicles:
@@ -141,6 +150,9 @@ async def async_setup_entry(
             vehicle_id_str = str(vehicle_id)
 
             for description in BINARY_SENSOR_DESCRIPTIONS:
+                if not _should_create(vehicle, description):
+                    continue
+
                 marker = (vehicle_id_str, description.key)
                 if marker in known_entity_keys:
                     continue

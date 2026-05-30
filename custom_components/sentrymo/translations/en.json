@@ -55,9 +55,6 @@
       "speed": {
         "name": "Speed"
       },
-      "engine_rpm": {
-        "name": "Engine RPM"
-      },
       "external_voltage": {
         "name": "Power voltage"
       },
@@ -72,15 +69,6 @@
       },
       "odometer": {
         "name": "Odometer"
-      },
-      "engine_temperature": {
-        "name": "Engine temperature"
-      },
-      "satellites": {
-        "name": "Satellites"
-      },
-      "hdop": {
-        "name": "GPS accuracy"
       },
       "last_update": {
         "name": "Last update"
@@ -106,8 +94,17 @@
       "data_mode": {
         "name": "Data mode"
       },
-      "ignition_state": {
-        "name": "Ignition state"
+      "engine_rpm": {
+        "name": "Engine RPM"
+      },
+      "engine_temperature": {
+        "name": "Engine temperature"
+      },
+      "satellites": {
+        "name": "Satellites"
+      },
+      "hdop": {
+        "name": "GPS accuracy"
       },
       "address": {
         "name": "Address"
@@ -163,11 +160,6 @@
     "button": {
       "refresh_data": {
         "name": "Refresh data"
-      }
-    },
-    "switch": {
-      "protection": {
-        "name": "Protection"
       }
     },
     "select": {

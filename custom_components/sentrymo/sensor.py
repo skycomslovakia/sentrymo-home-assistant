@@ -56,13 +56,6 @@ def _scale_gsm_signal(value: Any) -> int | None:
     return max(0, min(100, int(value)))
 
 
-def _bool_to_text(value: Any) -> str | None:
-    """Convert boolean values to text."""
-    if value is None:
-        return None
-    return "on" if bool(value) else "off"
-
-
 def _first_value(vehicle: dict[str, Any], *keys: str) -> Any:
     """Return first non-null state value by key."""
     state = _vehicle_state(vehicle)
@@ -117,22 +110,16 @@ def _vehicle_status(vehicle: dict[str, Any]) -> str:
 
     if isinstance(crash_state, str) and crash_state not in {"", "idle", "cleared", "resolved", "dismissed"}:
         return "crash"
-
     if isinstance(alarm_state, str) and alarm_state not in {"", "idle", "cleared", "resolved", "dismissed", "seen"}:
         return "alarm"
-
     if state.get("crash_detected"):
         return "crash"
-
     if state.get("alarm_active"):
         return "alarm"
-
     if state.get("moving"):
         return "moving"
-
     if state.get("ignition"):
         return "ignition_on"
-
     if state.get("online") is False:
         return "offline"
 
@@ -144,6 +131,7 @@ class SentrymoSensorDescription(SensorEntityDescription):
     """Description for a Sentrymo sensor."""
 
     value_fn: Callable[[dict[str, Any]], Any]
+    always_create: bool = False
 
 
 SENSOR_DESCRIPTIONS: tuple[SentrymoSensorDescription, ...] = (
@@ -153,15 +141,8 @@ SENSOR_DESCRIPTIONS: tuple[SentrymoSensorDescription, ...] = (
         native_unit_of_measurement=UnitOfSpeed.KILOMETERS_PER_HOUR,
         device_class=SensorDeviceClass.SPEED,
         state_class=SensorStateClass.MEASUREMENT,
+        always_create=True,
         value_fn=lambda vehicle: _vehicle_state(vehicle).get("speed_kmh"),
-    ),
-    SentrymoSensorDescription(
-        key="engine_rpm",
-        translation_key="engine_rpm",
-        native_unit_of_measurement="rpm",
-        state_class=SensorStateClass.MEASUREMENT,
-        entity_registry_enabled_default=False,
-        value_fn=lambda vehicle: _vehicle_state(vehicle).get("engine_rpm"),
     ),
     SentrymoSensorDescription(
         key="external_voltage",
@@ -169,6 +150,7 @@ SENSOR_DESCRIPTIONS: tuple[SentrymoSensorDescription, ...] = (
         native_unit_of_measurement=UnitOfElectricPotential.VOLT,
         device_class=SensorDeviceClass.VOLTAGE,
         state_class=SensorStateClass.MEASUREMENT,
+        always_create=True,
         value_fn=lambda vehicle: _vehicle_state(vehicle).get("external_voltage"),
     ),
     SentrymoSensorDescription(
@@ -177,20 +159,15 @@ SENSOR_DESCRIPTIONS: tuple[SentrymoSensorDescription, ...] = (
         native_unit_of_measurement=PERCENTAGE,
         device_class=SensorDeviceClass.BATTERY,
         state_class=SensorStateClass.MEASUREMENT,
+        always_create=True,
         value_fn=_battery_percent,
-    ),
-    SentrymoSensorDescription(
-        key="fuel_level",
-        translation_key="fuel_level",
-        native_unit_of_measurement=PERCENTAGE,
-        state_class=SensorStateClass.MEASUREMENT,
-        value_fn=lambda vehicle: _first_value(vehicle, "fuel_level_percent", "fuel_level"),
     ),
     SentrymoSensorDescription(
         key="gsm_signal",
         translation_key="gsm_signal",
         native_unit_of_measurement=PERCENTAGE,
         state_class=SensorStateClass.MEASUREMENT,
+        always_create=True,
         value_fn=lambda vehicle: _scale_gsm_signal(_vehicle_state(vehicle).get("gsm_signal")),
     ),
     SentrymoSensorDescription(
@@ -200,6 +177,69 @@ SENSOR_DESCRIPTIONS: tuple[SentrymoSensorDescription, ...] = (
         device_class=SensorDeviceClass.DISTANCE,
         state_class=SensorStateClass.TOTAL_INCREASING,
         value_fn=lambda vehicle: _vehicle_state(vehicle).get("odometer_km"),
+    ),
+    SentrymoSensorDescription(
+        key="last_update",
+        translation_key="last_update",
+        device_class=SensorDeviceClass.TIMESTAMP,
+        always_create=True,
+        value_fn=lambda vehicle: _parse_datetime(
+            vehicle.get("updated_at") or _vehicle_state(vehicle).get("last_seen_at")
+        ),
+    ),
+    SentrymoSensorDescription(
+        key="vehicle_status",
+        translation_key="vehicle_status",
+        always_create=True,
+        value_fn=_vehicle_status,
+    ),
+    SentrymoSensorDescription(
+        key="alarm_state",
+        translation_key="alarm_state",
+        always_create=True,
+        value_fn=lambda vehicle: _vehicle_state(vehicle).get("alarm_state"),
+    ),
+    SentrymoSensorDescription(
+        key="crash_state",
+        translation_key="crash_state",
+        always_create=True,
+        value_fn=lambda vehicle: _vehicle_state(vehicle).get("crash_state"),
+    ),
+    SentrymoSensorDescription(
+        key="protection_mode",
+        translation_key="protection_mode",
+        always_create=True,
+        value_fn=lambda vehicle: _vehicle_state(vehicle).get("protection_mode"),
+    ),
+    SentrymoSensorDescription(
+        key="sleep_state",
+        translation_key="sleep_state",
+        value_fn=lambda vehicle: _vehicle_state(vehicle).get("sleep_state"),
+    ),
+    SentrymoSensorDescription(
+        key="gnss_state",
+        translation_key="gnss_state",
+        value_fn=lambda vehicle: _vehicle_state(vehicle).get("gnss_state"),
+    ),
+    SentrymoSensorDescription(
+        key="data_mode",
+        translation_key="data_mode",
+        value_fn=lambda vehicle: _vehicle_state(vehicle).get("data_mode"),
+    ),
+    SentrymoSensorDescription(
+        key="fuel_level",
+        translation_key="fuel_level",
+        native_unit_of_measurement=PERCENTAGE,
+        state_class=SensorStateClass.MEASUREMENT,
+        value_fn=lambda vehicle: _first_value(vehicle, "fuel_level_percent", "fuel_level"),
+    ),
+    SentrymoSensorDescription(
+        key="engine_rpm",
+        translation_key="engine_rpm",
+        native_unit_of_measurement="rpm",
+        state_class=SensorStateClass.MEASUREMENT,
+        entity_registry_enabled_default=False,
+        value_fn=lambda vehicle: _vehicle_state(vehicle).get("engine_rpm"),
     ),
     SentrymoSensorDescription(
         key="engine_temperature",
@@ -225,55 +265,6 @@ SENSOR_DESCRIPTIONS: tuple[SentrymoSensorDescription, ...] = (
         value_fn=lambda vehicle: _vehicle_state(vehicle).get("hdop"),
     ),
     SentrymoSensorDescription(
-        key="last_update",
-        translation_key="last_update",
-        device_class=SensorDeviceClass.TIMESTAMP,
-        value_fn=lambda vehicle: _parse_datetime(
-            vehicle.get("updated_at") or _vehicle_state(vehicle).get("last_seen_at")
-        ),
-    ),
-    SentrymoSensorDescription(
-        key="vehicle_status",
-        translation_key="vehicle_status",
-        value_fn=_vehicle_status,
-    ),
-    SentrymoSensorDescription(
-        key="alarm_state",
-        translation_key="alarm_state",
-        value_fn=lambda vehicle: _vehicle_state(vehicle).get("alarm_state"),
-    ),
-    SentrymoSensorDescription(
-        key="crash_state",
-        translation_key="crash_state",
-        value_fn=lambda vehicle: _vehicle_state(vehicle).get("crash_state"),
-    ),
-    SentrymoSensorDescription(
-        key="protection_mode",
-        translation_key="protection_mode",
-        value_fn=lambda vehicle: _vehicle_state(vehicle).get("protection_mode"),
-    ),
-    SentrymoSensorDescription(
-        key="sleep_state",
-        translation_key="sleep_state",
-        value_fn=lambda vehicle: _vehicle_state(vehicle).get("sleep_state"),
-    ),
-    SentrymoSensorDescription(
-        key="gnss_state",
-        translation_key="gnss_state",
-        value_fn=lambda vehicle: _vehicle_state(vehicle).get("gnss_state"),
-    ),
-    SentrymoSensorDescription(
-        key="data_mode",
-        translation_key="data_mode",
-        value_fn=lambda vehicle: _vehicle_state(vehicle).get("data_mode"),
-    ),
-    SentrymoSensorDescription(
-        key="ignition_state",
-        translation_key="ignition_state",
-        entity_registry_enabled_default=False,
-        value_fn=lambda vehicle: _bool_to_text(_vehicle_state(vehicle).get("ignition")),
-    ),
-    SentrymoSensorDescription(
         key="address",
         translation_key="address",
         entity_registry_enabled_default=False,
@@ -297,6 +288,9 @@ async def async_setup_entry(
     coordinator: SentrymoDataUpdateCoordinator = hass.data[DOMAIN][entry.entry_id][DATA_COORDINATOR]
     known_entity_keys: set[tuple[str, str]] = set()
 
+    def _should_create(vehicle: dict[str, Any], description: SentrymoSensorDescription) -> bool:
+        return description.always_create or description.value_fn(vehicle) is not None
+
     def _build_entities() -> list[SentrymoSensor]:
         entities: list[SentrymoSensor] = []
 
@@ -308,6 +302,9 @@ async def async_setup_entry(
             vehicle_id_str = str(vehicle_id)
 
             for description in SENSOR_DESCRIPTIONS:
+                if not _should_create(vehicle, description):
+                    continue
+
                 marker = (vehicle_id_str, description.key)
                 if marker in known_entity_keys:
                     continue
