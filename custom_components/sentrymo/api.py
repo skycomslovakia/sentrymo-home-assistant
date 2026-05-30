@@ -367,6 +367,15 @@ class SentrymoApiClient:
         code = str(body.get("code") or "")
         message = str(body.get("message") or f"Unexpected API error for {path}")
 
+        if response.status == 404 and path in {API_AUTH_EXCHANGE, API_AUTH_REFRESH}:
+            raise SentrymoCannotConnect("Home Assistant API endpoint was not found. Check API URL.")
+
+        if response.status == 422 and path == API_AUTH_EXCHANGE:
+            raise SentrymoInvalidAuth(message)
+
+        if response.status == 429:
+            raise SentrymoApiError(message or "Rate limited")
+
         if response.status in (401, 403):
             if code == "package_required":
                 raise SentrymoPackageUnavailable(message)
