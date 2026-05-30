@@ -12,6 +12,7 @@ import voluptuous as vol
 from homeassistant import config_entries
 from homeassistant.const import CONF_NAME
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
+from homeassistant.helpers.instance_id import async_get as async_get_instance_id
 
 from .api import (
     SentrymoApiClient,
@@ -166,12 +167,14 @@ class SentrymoConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         client = SentrymoApiClient(async_get_clientsession(self.hass), api_url=api_url)
 
         try:
+            ha_instance_id = await async_get_instance_id(self.hass)
+
             await client.async_exchange_setup_key(
                 api_url,
                 str(user_input[CONF_SETUP_KEY]).strip(),
                 cpin,
                 client_name=str(user_input.get(CONF_NAME) or DEFAULT_CLIENT_NAME),
-                ha_instance_id=self.hass.config.api.unique_id if self.hass.config.api else None,
+                ha_instance_id=ha_instance_id,
             )
             unique_id = await _build_unique_id(client)
         except SentrymoCannotConnect:
