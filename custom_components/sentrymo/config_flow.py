@@ -6,8 +6,24 @@ import voluptuous as vol
 
 from homeassistant import config_entries
 from homeassistant.const import CONF_NAME
+from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
-from .const import CONF_API_URL, CONF_CPIN, CONF_SETUP_KEY, DEFAULT_PROD_API_URL, DOMAIN
+from .api import (
+    SentrymoApiClient,
+    SentrymoCannotConnect,
+    SentrymoInvalidAuth,
+    SentrymoPackageUnavailable,
+)
+from .const import (
+    CONF_ACCESS_TOKEN,
+    CONF_API_URL,
+    CONF_CPIN,
+    CONF_REFRESH_TOKEN,
+    CONF_SETUP_KEY,
+    CONF_TOKEN_EXPIRES_AT,
+    DEFAULT_PROD_API_URL,
+    DOMAIN,
+)
 
 
 class SentrymoConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
@@ -23,10 +39,44 @@ class SentrymoConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             await self.async_set_unique_id("sentrymo")
             self._abort_if_unique_id_configured()
 
-            return self.async_create_entry(
-                title=user_input.get(CONF_NAME, "Sentrymo"),
-                data=user_input,
-            )
+            cpin = (user_input.get(CONF_CPIN) or "").strip()
+            if cpin and (not cpin.isdigit() or len(cpin) != 4):
+                errors["base"] = "invalid_cpin"
+            else:
+                try:
+                    client = SentrymoApiClient(async_get_clientsession(self.hass))
+                    await client.async_exchange_setup_key(
+                        user_input[CONF_API_URL],
+                        user_input[CONF_SETUP_KEY],
+                        cpin,
+                        client_name=user_input.get(CONF_NAME),
+                    )
+                except SentrymoPackageUnavailable:
+                    errors["base"] = "package_unavailable"
+                except SentrymoCannotConnect:
+                    errors["base"] = "cannot_connect"
+                except SentrymoInvalidAuth as err:
+                    if "no longer valid" in str(err).lower() or "expired" in str(err).lower():
+                        errors["base"] = "setup_key_expired"
+                    else:
+                        errors["base"] = "invalid_auth"
+                except Exception:
+                    errors["base"] = "unknown"
+                else:
+                    data = {
+                        CONF_NAME: user_input.get(CONF_NAME, "Sentrymo"),
+                        CONF_API_URL: client.api_url,
+                        CONF_ACCESS_TOKEN: client.access_token,
+                        CONF_REFRESH_TOKEN: client.refresh_token,
+                        CONF_TOKEN_EXPIRES_AT: client.token_expires_at,
+                    }
+                    if cpin:
+                        data[CONF_CPIN] = cpin
+
+                    return self.async_create_entry(
+                        title=user_input.get(CONF_NAME, "Sentrymo"),
+                        data=data,
+                    )
 
         schema = vol.Schema(
             {

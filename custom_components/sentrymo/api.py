@@ -564,6 +564,10 @@ class SentrymoApiClient:
                 target.setdefault("capabilities", {})
                 target["capabilities"].update(dict(nested_capabilities))
 
+            nested_can = state_dict.get("can")
+            if isinstance(nested_can, Mapping):
+                state_dict.update(dict(nested_can))
+
             nested_name = state_dict.get("name")
             if isinstance(nested_name, str) and nested_name:
                 target["name"] = nested_name
