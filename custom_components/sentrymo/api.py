@@ -91,12 +91,16 @@ class SentrymoApiClient:
         """Normalize API URL input to `/ha-api/v1` base."""
         base_url = (api_url or DEFAULT_PROD_API_URL).strip().rstrip("/")
         lowered = base_url.lower()
+
         if lowered.endswith("/ha-api/v1"):
             return base_url
+
         if lowered.endswith("/ha-api"):
             return f"{base_url}/v1"
+
         if "/ha-api/" in lowered:
             return base_url
+
         return f"{base_url}/ha-api/v1"
 
     def set_tokens(
@@ -105,23 +109,31 @@ class SentrymoApiClient:
         access_token: str | None = None,
         refresh_token: str | None = None,
         token_expires_at: str | None = None,
+        access_token_expires_at: str | None = None,
     ) -> None:
-        """Update in-memory tokens."""
+        """Update in-memory tokens.
+
+        `access_token_expires_at` is the config-entry storage key.
+        `token_expires_at` is the internal attribute name.
+        """
         if access_token:
             self.access_token = access_token
+
         if refresh_token:
             self.refresh_token = refresh_token
-        if token_expires_at:
-            self.token_expires_at = token_expires_at
+
+        resolved_expires_at = token_expires_at or access_token_expires_at
+        if resolved_expires_at:
+            self.token_expires_at = resolved_expires_at
 
     async def async_exchange_setup_key(
-            self,
-            api_url: str,
-            setup_key: str,
-            cpin: str,
-            *,
-            client_name: str | None = None,
-            ha_instance_id: str | None = None,
+        self,
+        api_url: str,
+        setup_key: str,
+        cpin: str,
+        *,
+        client_name: str | None = None,
+        ha_instance_id: str | None = None,
     ) -> dict[str, Any]:
         """Exchange a setup key for tokens."""
         self.api_url = self.normalize_api_url(api_url)
@@ -140,7 +152,9 @@ class SentrymoApiClient:
             allow_refresh=False,
         )
 
-        self.set_tokens(**self._extract_tokens(response))
+        tokens = self._extract_tokens(response)
+        self.set_tokens(**tokens)
+
         return response
 
     async def async_refresh_token(self) -> dict[str, Any]:
@@ -155,10 +169,13 @@ class SentrymoApiClient:
             require_auth=False,
             allow_refresh=False,
         )
+
         tokens = self._extract_tokens(response, refresh_token=self.refresh_token)
         self.set_tokens(**tokens)
+
         if self._token_update_callback is not None:
             await self._token_update_callback(tokens)
+
         return response
 
     async def async_get_profile(self) -> dict[str, Any]:
@@ -177,7 +194,7 @@ class SentrymoApiClient:
         account: dict[str, Any] = {}
         capabilities: dict[str, Any] = {}
 
-        # 1) Profile je základ: polling, account, globálne capabilities.
+        # 1) Profile is the base source for account, polling and global capabilities.
         try:
             profile = await self.async_get_profile()
         except SentrymoApiError as err:
@@ -201,29 +218,33 @@ class SentrymoApiClient:
 
             profile_server = profile.get("server")
             if isinstance(profile_server, Mapping):
-                server_time = profile_server.get("server_time", server_time)
+                maybe_server_time = profile_server.get("server_time")
+                if isinstance(maybe_server_time, str):
+                    server_time = maybe_server_time
 
-        # 2) Vehicles je hlavný zdroj zoznamu zariadení.
-        # Toto musí fungovať aj keď /state/* ešte nie je komplet hotové.
+        # 2) Vehicles endpoint is the base source for HA devices.
+        # This makes the integration usable even if state segments are not ready yet.
         try:
             vehicles_response = await self.async_get_vehicles()
         except SentrymoApiError as err:
             _LOGGER.warning("Sentrymo vehicles endpoint failed: %s", err)
             vehicles_response = {}
 
-        for vehicle in vehicles_response.get("vehicles", []):
-            if not isinstance(vehicle, Mapping):
-                continue
+        vehicles = vehicles_response.get("vehicles") if isinstance(vehicles_response, Mapping) else []
+        if isinstance(vehicles, list):
+            for vehicle in vehicles:
+                if not isinstance(vehicle, Mapping):
+                    continue
 
-            vehicle_id = self._coerce_vehicle_id(vehicle)
-            if vehicle_id is None:
-                continue
+                vehicle_id = self._coerce_vehicle_id(vehicle)
+                if vehicle_id is None:
+                    continue
 
-            merged.setdefault(vehicle_id, {"vehicle_id": vehicle_id})
-            self._merge_vehicle_segment(merged[vehicle_id], dict(vehicle))
+                merged.setdefault(vehicle_id, {"vehicle_id": vehicle_id})
+                self._merge_vehicle_segment(merged[vehicle_id], dict(vehicle))
 
-        # 3) Segmenty sú voliteľné rozšírenie základných vozidiel.
-        # Ak niektorý segment padne, nesmie zhodiť celú integráciu.
+        # 3) State segments enrich existing vehicles.
+        # A broken/missing segment must not break the whole integration.
         segment_paths = {
             "fast": API_STATE_FAST,
             "telemetry": API_STATE_TELEMETRY,
@@ -235,16 +256,26 @@ class SentrymoApiClient:
             try:
                 response = await self._get_segment(segment, path)
             except SentrymoApiError as err:
-                _LOGGER.warning("Skipping Sentrymo segment %s because it failed: %s", segment, err)
+                _LOGGER.warning(
+                    "Skipping Sentrymo segment %s because it failed: %s",
+                    segment,
+                    err,
+                )
                 continue
 
-            server_time = response.get("server_time", server_time)
+            maybe_server_time = response.get("server_time")
+            if isinstance(maybe_server_time, str):
+                server_time = maybe_server_time
 
             recommended = response.get("recommended_poll_seconds")
             if isinstance(recommended, int):
                 polling[segment] = recommended
 
-            for vehicle in response.get("vehicles", []):
+            segment_vehicles = response.get("vehicles")
+            if not isinstance(segment_vehicles, list):
+                continue
+
+            for vehicle in segment_vehicles:
                 if not isinstance(vehicle, Mapping):
                     continue
 
@@ -274,8 +305,10 @@ class SentrymoApiClient:
     ) -> dict[str, Any]:
         """Send a vehicle command."""
         command_payload = {"source": DEFAULT_SOURCE}
+
         if payload:
             command_payload.update(payload)
+
         return await self._request(
             "post",
             f"/vehicles/{vehicle_id}/commands/{command}",
@@ -286,14 +319,22 @@ class SentrymoApiClient:
         """Fetch a state segment with cache windows based on backend polling."""
         now = dt_util.utcnow()
         next_refresh = self._segment_next_refresh.get(segment)
+
         if segment in self._segment_cache and next_refresh is not None and now < next_refresh:
             return self._segment_cache[segment]
 
         response = await self._request("get", path)
         self._segment_cache[segment] = response
+
         recommended = response.get("recommended_poll_seconds")
-        seconds = recommended if isinstance(recommended, int) and recommended > 0 else DEFAULT_EXCHANGE_PAYLOAD.get(segment, 60)
+        seconds = (
+            recommended
+            if isinstance(recommended, int) and recommended > 0
+            else DEFAULT_EXCHANGE_PAYLOAD.get(segment, 60)
+        )
+
         self._segment_next_refresh[segment] = now + timedelta(seconds=seconds)
+
         return response
 
     async def _request(
@@ -308,9 +349,11 @@ class SentrymoApiClient:
     ) -> dict[str, Any]:
         """Execute an HTTP request."""
         url = f"{self.api_url}{path if path.startswith('/') else f'/{path}'}"
+
         request_headers = {"Accept": "application/json"}
         if headers:
             request_headers.update(headers)
+
         if require_auth and self.access_token:
             request_headers["Authorization"] = f"Bearer {self.access_token}"
 
@@ -329,10 +372,12 @@ class SentrymoApiClient:
 
         if response.status == 401 and allow_refresh and require_auth and self.refresh_token:
             _LOGGER.debug("Received 401 from Sentrymo API, attempting token refresh")
+
             try:
                 await self.async_refresh_token()
             except SentrymoApiError as err:
                 raise SentrymoAuthError("Authentication refresh failed") from err
+
             return await self._request(
                 method,
                 path,
@@ -344,6 +389,7 @@ class SentrymoApiClient:
 
         body = await self._decode_json(response)
         self._raise_for_status(response, body, path)
+
         return body
 
     async def _decode_json(self, response: ClientResponse) -> dict[str, Any]:
@@ -352,6 +398,7 @@ class SentrymoApiClient:
             payload = await response.json(content_type=None)
         except ValueError:
             payload = {}
+
         return payload if isinstance(payload, dict) else {}
 
     def _raise_for_status(
@@ -368,7 +415,9 @@ class SentrymoApiClient:
         message = str(body.get("message") or f"Unexpected API error for {path}")
 
         if response.status == 404 and path in {API_AUTH_EXCHANGE, API_AUTH_REFRESH}:
-            raise SentrymoCannotConnect("Home Assistant API endpoint was not found. Check API URL.")
+            raise SentrymoCannotConnect(
+                "Home Assistant API endpoint was not found. Check API URL."
+            )
 
         if response.status == 422 and path == API_AUTH_EXCHANGE:
             raise SentrymoInvalidAuth(message)
@@ -379,6 +428,7 @@ class SentrymoApiClient:
         if response.status in (401, 403):
             if code == "package_required":
                 raise SentrymoPackageUnavailable(message)
+
             if code in {
                 "invalid_setup_key",
                 "setup_key_expired",
@@ -388,6 +438,7 @@ class SentrymoApiClient:
                 "invalid_token",
             }:
                 raise SentrymoInvalidAuth(message)
+
             raise SentrymoAuthError(message)
 
         if "/commands/" in path:
@@ -409,11 +460,13 @@ class SentrymoApiClient:
         resolved_refresh = payload.get("refresh_token")
         if not isinstance(resolved_refresh, str) or not resolved_refresh:
             resolved_refresh = refresh_token or self.refresh_token
+
         if not resolved_refresh:
             raise SentrymoInvalidAuth("Refresh token missing in response")
 
         expires_at_value = payload.get("access_token_expires_at") or payload.get("expires_at")
         expires_at = self._normalize_expires_at(expires_at_value, payload.get("expires_in"))
+
         return {
             CONF_ACCESS_TOKEN: access_token,
             CONF_REFRESH_TOKEN: resolved_refresh,
@@ -441,36 +494,68 @@ class SentrymoApiClient:
         target["vehicle_id"] = vehicle_id
         target["updated_at"] = vehicle.get("updated_at", target.get("updated_at"))
 
-        if isinstance(vehicle.get("name"), str):
-            target["name"] = vehicle["name"]
-        if isinstance(vehicle.get("package"), str):
-            target["package"] = vehicle["package"]
-        if isinstance(vehicle.get("capabilities"), Mapping):
+        name = vehicle.get("name")
+        if isinstance(name, str) and name:
+            target["name"] = name
+
+        package = vehicle.get("package")
+        if isinstance(package, str) and package:
+            target["package"] = package
+
+        capabilities = vehicle.get("capabilities")
+        if isinstance(capabilities, Mapping):
             target.setdefault("capabilities", {})
-            target["capabilities"].update(vehicle["capabilities"])
+            target["capabilities"].update(dict(capabilities))
 
         location = vehicle.get("location")
         if isinstance(location, Mapping):
             target.setdefault("location", {})
-            target["location"].update({key: value for key, value in location.items()})
+            target["location"].update(dict(location))
 
         state = vehicle.get("state")
         if isinstance(state, Mapping):
             target.setdefault("state", {})
             state_dict = dict(state)
+
             nested_capabilities = state_dict.pop("capabilities", None)
-            if isinstance(state_dict.get("name"), str):
-                target["name"] = state_dict["name"]
-            if isinstance(state_dict.get("package"), str):
-                target["package"] = state_dict["package"]
             if isinstance(nested_capabilities, Mapping):
                 target.setdefault("capabilities", {})
-                target["capabilities"].update(nested_capabilities)
+                target["capabilities"].update(dict(nested_capabilities))
+
+            nested_name = state_dict.get("name")
+            if isinstance(nested_name, str) and nested_name:
+                target["name"] = nested_name
+
+            nested_package = state_dict.get("package")
+            if isinstance(nested_package, str) and nested_package:
+                target["package"] = nested_package
+
             target["state"].update(state_dict)
+
+        # Be tolerant to alternative backend shapes.
+        # Some segment payloads may come as {"telemetry": {...}} or {"slow": {...}}
+        # instead of directly under "state".
+        for nested_key in ("fast", "telemetry", "slow"):
+            nested = vehicle.get(nested_key)
+            if isinstance(nested, Mapping):
+                target.setdefault("state", {})
+                target["state"].update(dict(nested))
+
+        gps = vehicle.get("gps")
+        if isinstance(gps, Mapping):
+            target.setdefault("location", {})
+            target["location"].update(dict(gps))
 
     def _coerce_vehicle_id(self, vehicle: Mapping[str, Any]) -> str | None:
         """Get vehicle id from different backend payload variants."""
         value = vehicle.get("vehicle_id", vehicle.get("id"))
+
+        if value is None:
+            state = vehicle.get("state")
+            if isinstance(state, Mapping):
+                value = state.get("id")
+
         if value is None:
             return None
+
         return str(value)
