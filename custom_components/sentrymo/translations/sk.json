@@ -10,15 +10,103 @@
           "setup_key": "Setup key",
           "cpin": "CPIN"
         }
+      },
+      "reauth_confirm": {
+        "title": "Znovu pripojiť Sentrymo",
+        "description": "Zadaj nový setup key a 4-miestny CPIN zo Sentrymo aplikácie.",
+        "data": {
+          "api_url": "API URL",
+          "setup_key": "Setup key",
+          "cpin": "CPIN"
+        }
       }
     },
     "error": {
       "cannot_connect": "Pripojenie zlyhalo",
       "invalid_auth": "Neplatné prihlásenie",
+      "invalid_cpin": "CPIN musí mať presne 4 číslice",
+      "package_unavailable": "Home Assistant integrácia nie je dostupná pre tento balík",
+      "setup_key_expired": "Setup key expiroval alebo už bol použitý",
       "unknown": "Neočakávaná chyba"
     },
     "abort": {
-      "already_configured": "Sentrymo je už nastavené"
+      "already_configured": "Sentrymo je už nastavené",
+      "reauth_successful": "Sentrymo bolo úspešne znovu pripojené"
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Možnosti Sentrymo",
+        "description": "Uprav API URL používané touto integráciou.",
+        "data": {
+          "api_url": "API URL"
+        }
+      }
+    }
+  },
+  "entity": {
+    "device_tracker": {
+      "location": {
+        "name": "Poloha"
+      }
+    },
+    "sensor": {
+      "speed": {
+        "name": "Rýchlosť"
+      },
+      "battery_voltage": {
+        "name": "Napätie batérie"
+      },
+      "external_voltage": {
+        "name": "Externé napätie"
+      },
+      "fuel_level": {
+        "name": "Palivo"
+      },
+      "gsm_signal": {
+        "name": "GSM signál"
+      },
+      "odometer": {
+        "name": "Odometer"
+      },
+      "last_update": {
+        "name": "Posledná aktualizácia"
+      },
+      "ignition_state": {
+        "name": "Stav zapaľovania"
+      },
+      "vehicle_status": {
+        "name": "Stav vozidla"
+      }
+    },
+    "binary_sensor": {
+      "moving": {
+        "name": "Pohyb"
+      },
+      "ignition": {
+        "name": "Zapaľovanie"
+      },
+      "protection_active": {
+        "name": "Ochrana aktívna"
+      },
+      "alarm_active": {
+        "name": "Alarm aktívny"
+      },
+      "online": {
+        "name": "Online"
+      },
+      "charging": {
+        "name": "Nabíjanie"
+      },
+      "crash_detected": {
+        "name": "Detekcia nárazu"
+      }
+    },
+    "button": {
+      "refresh_snapshot": {
+        "name": "Obnoviť snapshot"
+      }
     }
   }
 }

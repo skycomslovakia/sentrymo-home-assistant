@@ -10,15 +10,103 @@
           "setup_key": "Setup key",
           "cpin": "CPIN"
         }
+      },
+      "reauth_confirm": {
+        "title": "Reconnect Sentrymo",
+        "description": "Enter a fresh setup key and the 4-digit CPIN from the Sentrymo app.",
+        "data": {
+          "api_url": "API URL",
+          "setup_key": "Setup key",
+          "cpin": "CPIN"
+        }
       }
     },
     "error": {
       "cannot_connect": "Failed to connect",
       "invalid_auth": "Invalid authentication",
+      "invalid_cpin": "CPIN must be exactly 4 digits",
+      "package_unavailable": "Home Assistant integration is not available for this package",
+      "setup_key_expired": "Setup key is expired or already used",
       "unknown": "Unexpected error"
     },
     "abort": {
-      "already_configured": "Sentrymo is already configured"
+      "already_configured": "Sentrymo is already configured",
+      "reauth_successful": "Sentrymo was successfully reconnected"
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Sentrymo options",
+        "description": "Update the API URL used by this integration entry.",
+        "data": {
+          "api_url": "API URL"
+        }
+      }
+    }
+  },
+  "entity": {
+    "device_tracker": {
+      "location": {
+        "name": "Location"
+      }
+    },
+    "sensor": {
+      "speed": {
+        "name": "Speed"
+      },
+      "battery_voltage": {
+        "name": "Battery voltage"
+      },
+      "external_voltage": {
+        "name": "External voltage"
+      },
+      "fuel_level": {
+        "name": "Fuel level"
+      },
+      "gsm_signal": {
+        "name": "GSM signal"
+      },
+      "odometer": {
+        "name": "Odometer"
+      },
+      "last_update": {
+        "name": "Last update"
+      },
+      "ignition_state": {
+        "name": "Ignition state"
+      },
+      "vehicle_status": {
+        "name": "Vehicle status"
+      }
+    },
+    "binary_sensor": {
+      "moving": {
+        "name": "Moving"
+      },
+      "ignition": {
+        "name": "Ignition"
+      },
+      "protection_active": {
+        "name": "Protection active"
+      },
+      "alarm_active": {
+        "name": "Alarm active"
+      },
+      "online": {
+        "name": "Online"
+      },
+      "charging": {
+        "name": "Charging"
+      },
+      "crash_detected": {
+        "name": "Crash detected"
+      }
+    },
+    "button": {
+      "refresh_snapshot": {
+        "name": "Refresh snapshot"
+      }
     }
   }
 }

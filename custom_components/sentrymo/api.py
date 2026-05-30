@@ -2,11 +2,420 @@
 
 from __future__ import annotations
 
+from collections.abc import Awaitable, Callable, Mapping
+from datetime import UTC, timedelta
+import logging
+from typing import Any
+
+import async_timeout
+from aiohttp import ClientError, ClientResponse, ClientSession
+
+from homeassistant.util import dt as dt_util
+
+from .const import (
+    API_AUTH_EXCHANGE,
+    API_AUTH_REFRESH,
+    API_PROFILE,
+    API_STATE_CONFIG,
+    API_STATE_FAST,
+    API_STATE_SLOW,
+    API_STATE_TELEMETRY,
+    API_VEHICLES,
+    CONF_ACCESS_TOKEN,
+    CONF_REFRESH_TOKEN,
+    CONF_TOKEN_EXPIRES_AT,
+    DEFAULT_EXCHANGE_PAYLOAD,
+    DEFAULT_PROD_API_URL,
+    DEFAULT_SOURCE,
+)
+
+_LOGGER = logging.getLogger(__name__)
+
+TokenUpdateCallback = Callable[[dict[str, str]], Awaitable[None]]
+
+
+class SentrymoApiError(Exception):
+    """Base exception for Sentrymo API errors."""
+
+
+class SentrymoCannotConnect(SentrymoApiError):
+    """Raised when the API cannot be reached."""
+
+
+class SentrymoAuthError(SentrymoApiError):
+    """Raised when authentication fails."""
+
+
+class SentrymoInvalidAuth(SentrymoAuthError):
+    """Raised when credentials are invalid."""
+
+
+class SentrymoPackageUnavailable(SentrymoApiError):
+    """Raised when the user package does not support the integration."""
+
+
+class SentrymoCommandError(SentrymoApiError):
+    """Raised when a command request fails."""
+
+    def __init__(self, message: str, *, code: str | None = None) -> None:
+        """Initialize the exception."""
+        super().__init__(message)
+        self.code = code
+
 
 class SentrymoApiClient:
-    """Minimal Sentrymo API client placeholder."""
+    """Async Sentrymo API client."""
 
-    def __init__(self, api_url: str, access_token: str | None = None) -> None:
+    def __init__(
+        self,
+        session: ClientSession,
+        api_url: str = DEFAULT_PROD_API_URL,
+        access_token: str | None = None,
+        refresh_token: str | None = None,
+        token_expires_at: str | None = None,
+        *,
+        token_update_callback: TokenUpdateCallback | None = None,
+    ) -> None:
         """Initialize the API client."""
-        self.api_url = api_url.rstrip("/")
+        self._session = session
+        self.api_url = self.normalize_api_url(api_url)
         self.access_token = access_token
+        self.refresh_token = refresh_token
+        self.token_expires_at = token_expires_at
+        self._token_update_callback = token_update_callback
+        self._segment_cache: dict[str, dict[str, Any]] = {}
+        self._segment_next_refresh: dict[str, Any] = {}
+
+    @staticmethod
+    def normalize_api_url(api_url: str | None) -> str:
+        """Normalize API URL input to `/ha-api/v1` base."""
+        base_url = (api_url or DEFAULT_PROD_API_URL).strip().rstrip("/")
+        lowered = base_url.lower()
+        if lowered.endswith("/ha-api/v1"):
+            return base_url
+        if lowered.endswith("/ha-api"):
+            return f"{base_url}/v1"
+        if "/ha-api/" in lowered:
+            return base_url
+        return f"{base_url}/ha-api/v1"
+
+    def set_tokens(
+        self,
+        *,
+        access_token: str | None = None,
+        refresh_token: str | None = None,
+        token_expires_at: str | None = None,
+    ) -> None:
+        """Update in-memory tokens."""
+        if access_token:
+            self.access_token = access_token
+        if refresh_token:
+            self.refresh_token = refresh_token
+        if token_expires_at:
+            self.token_expires_at = token_expires_at
+
+    async def async_exchange_setup_key(
+        self,
+        api_url: str,
+        setup_key: str,
+        cpin: str,
+        *,
+        client_name: str | None = None,
+        ha_instance_id: str | None = None,
+    ) -> dict[str, Any]:
+        """Exchange a setup key for tokens."""
+        del cpin
+        self.api_url = self.normalize_api_url(api_url)
+        response = await self._request(
+            "post",
+            API_AUTH_EXCHANGE,
+            json_payload={
+                "setup_key": setup_key,
+                "client_name": client_name,
+                "ha_instance_id": ha_instance_id,
+                "requested_polling": DEFAULT_EXCHANGE_PAYLOAD,
+            },
+            require_auth=False,
+            allow_refresh=False,
+        )
+        self.set_tokens(**self._extract_tokens(response))
+        return response
+
+    async def async_refresh_token(self) -> dict[str, Any]:
+        """Refresh access token."""
+        if not self.refresh_token:
+            raise SentrymoAuthError("Refresh token missing")
+
+        response = await self._request(
+            "post",
+            API_AUTH_REFRESH,
+            json_payload={CONF_REFRESH_TOKEN: self.refresh_token},
+            require_auth=False,
+            allow_refresh=False,
+        )
+        tokens = self._extract_tokens(response, refresh_token=self.refresh_token)
+        self.set_tokens(**tokens)
+        if self._token_update_callback is not None:
+            await self._token_update_callback(tokens)
+        return response
+
+    async def async_get_profile(self) -> dict[str, Any]:
+        """Fetch profile payload."""
+        return await self._request("get", API_PROFILE)
+
+    async def async_get_vehicles(self) -> dict[str, Any]:
+        """Fetch vehicles payload."""
+        return await self._request("get", API_VEHICLES)
+
+    async def async_get_snapshot(self) -> dict[str, Any]:
+        """Fetch and merge state segments into one snapshot."""
+        segment_paths = {
+            "fast": API_STATE_FAST,
+            "telemetry": API_STATE_TELEMETRY,
+            "slow": API_STATE_SLOW,
+            "config": API_STATE_CONFIG,
+        }
+        polling: dict[str, int] = {}
+        merged: dict[str, dict[str, Any]] = {}
+        server_time: str | None = None
+
+        for segment, path in segment_paths.items():
+            response = await self._get_segment(segment, path)
+            server_time = response.get("server_time", server_time)
+            recommended = response.get("recommended_poll_seconds")
+            if isinstance(recommended, int):
+                polling[segment] = recommended
+            for vehicle in response.get("vehicles", []):
+                if not isinstance(vehicle, Mapping):
+                    continue
+                vehicle_id = self._coerce_vehicle_id(vehicle)
+                if vehicle_id is None:
+                    continue
+                merged.setdefault(vehicle_id, {"vehicle_id": vehicle_id})
+                self._merge_vehicle_segment(merged[vehicle_id], dict(vehicle))
+
+        profile = await self.async_get_profile()
+        profile_polling = profile.get("polling")
+        if isinstance(profile_polling, Mapping):
+            for key, value in profile_polling.items():
+                if isinstance(value, int):
+                    polling[key] = value
+
+        if not merged:
+            vehicles_response = await self.async_get_vehicles()
+            for vehicle in vehicles_response.get("vehicles", []):
+                if not isinstance(vehicle, Mapping):
+                    continue
+                vehicle_id = self._coerce_vehicle_id(vehicle)
+                if vehicle_id is None:
+                    continue
+                merged.setdefault(vehicle_id, {"vehicle_id": vehicle_id})
+                self._merge_vehicle_segment(merged[vehicle_id], dict(vehicle))
+
+        return {
+            "server_time": server_time,
+            "polling": polling,
+            "account": profile.get("account", {}),
+            "capabilities": profile.get("capabilities", {}),
+            "vehicles": sorted(merged.values(), key=lambda item: str(item.get("name", item["vehicle_id"]))),
+        }
+
+    async def async_send_command(
+        self,
+        vehicle_id: int | str,
+        command: str,
+        payload: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        """Send a vehicle command."""
+        command_payload = {"source": DEFAULT_SOURCE}
+        if payload:
+            command_payload.update(payload)
+        return await self._request(
+            "post",
+            f"/vehicles/{vehicle_id}/commands/{command}",
+            json_payload=command_payload,
+        )
+
+    async def _get_segment(self, segment: str, path: str) -> dict[str, Any]:
+        """Fetch a state segment with cache windows based on backend polling."""
+        now = dt_util.utcnow()
+        next_refresh = self._segment_next_refresh.get(segment)
+        if segment in self._segment_cache and next_refresh is not None and now < next_refresh:
+            return self._segment_cache[segment]
+
+        response = await self._request("get", path)
+        self._segment_cache[segment] = response
+        recommended = response.get("recommended_poll_seconds")
+        seconds = recommended if isinstance(recommended, int) and recommended > 0 else DEFAULT_EXCHANGE_PAYLOAD.get(segment, 60)
+        self._segment_next_refresh[segment] = now + timedelta(seconds=seconds)
+        return response
+
+    async def _request(
+        self,
+        method: str,
+        path: str,
+        *,
+        json_payload: dict[str, Any] | None = None,
+        headers: dict[str, str] | None = None,
+        require_auth: bool = True,
+        allow_refresh: bool = True,
+    ) -> dict[str, Any]:
+        """Execute an HTTP request."""
+        url = f"{self.api_url}{path if path.startswith('/') else f'/{path}'}"
+        request_headers = {"Accept": "application/json"}
+        if headers:
+            request_headers.update(headers)
+        if require_auth and self.access_token:
+            request_headers["Authorization"] = f"Bearer {self.access_token}"
+
+        try:
+            async with async_timeout.timeout(20):
+                response = await self._session.request(
+                    method.upper(),
+                    url,
+                    json=json_payload,
+                    headers=request_headers,
+                )
+        except TimeoutError as err:
+            raise SentrymoCannotConnect("Request timed out") from err
+        except ClientError as err:
+            raise SentrymoCannotConnect("Request failed") from err
+
+        if response.status == 401 and allow_refresh and require_auth and self.refresh_token:
+            _LOGGER.debug("Received 401 from Sentrymo API, attempting token refresh")
+            try:
+                await self.async_refresh_token()
+            except SentrymoApiError as err:
+                raise SentrymoAuthError("Authentication refresh failed") from err
+            return await self._request(
+                method,
+                path,
+                json_payload=json_payload,
+                headers=headers,
+                require_auth=require_auth,
+                allow_refresh=False,
+            )
+
+        body = await self._decode_json(response)
+        self._raise_for_status(response, body, path)
+        return body
+
+    async def _decode_json(self, response: ClientResponse) -> dict[str, Any]:
+        """Decode a JSON response safely."""
+        try:
+            payload = await response.json(content_type=None)
+        except ValueError:
+            payload = {}
+        return payload if isinstance(payload, dict) else {}
+
+    def _raise_for_status(
+        self,
+        response: ClientResponse,
+        body: Mapping[str, Any],
+        path: str,
+    ) -> None:
+        """Convert HTTP failures to domain exceptions."""
+        if response.status < 400:
+            return
+
+        code = str(body.get("code") or "")
+        message = str(body.get("message") or f"Unexpected API error for {path}")
+
+        if response.status in (401, 403):
+            if code == "package_required":
+                raise SentrymoPackageUnavailable(message)
+            if code in {
+                "invalid_setup_key",
+                "setup_key_expired",
+                "integration_revoked",
+                "invalid_refresh_token",
+                "refresh_token_expired",
+                "invalid_token",
+            }:
+                raise SentrymoInvalidAuth(message)
+            raise SentrymoAuthError(message)
+
+        if "/commands/" in path:
+            raise SentrymoCommandError(message, code=code)
+
+        raise SentrymoApiError(message)
+
+    def _extract_tokens(
+        self,
+        payload: Mapping[str, Any],
+        *,
+        refresh_token: str | None = None,
+    ) -> dict[str, str]:
+        """Extract normalized token fields from a response payload."""
+        access_token = payload.get("access_token")
+        if not isinstance(access_token, str) or not access_token:
+            raise SentrymoInvalidAuth("Access token missing in response")
+
+        resolved_refresh = payload.get("refresh_token")
+        if not isinstance(resolved_refresh, str) or not resolved_refresh:
+            resolved_refresh = refresh_token or self.refresh_token
+        if not resolved_refresh:
+            raise SentrymoInvalidAuth("Refresh token missing in response")
+
+        expires_at_value = payload.get("access_token_expires_at") or payload.get("expires_at")
+        expires_at = self._normalize_expires_at(expires_at_value, payload.get("expires_in"))
+        return {
+            CONF_ACCESS_TOKEN: access_token,
+            CONF_REFRESH_TOKEN: resolved_refresh,
+            CONF_TOKEN_EXPIRES_AT: expires_at,
+        }
+
+    def _normalize_expires_at(self, expires_at: Any, expires_in: Any) -> str:
+        """Normalize expiry values to an ISO UTC timestamp."""
+        if isinstance(expires_at, str) and expires_at:
+            parsed = dt_util.parse_datetime(expires_at)
+            if parsed is not None:
+                return parsed.astimezone(UTC).isoformat()
+
+        if isinstance(expires_in, (int, float)) and expires_in > 0:
+            return (dt_util.utcnow() + timedelta(seconds=int(expires_in))).isoformat()
+
+        return (dt_util.utcnow() + timedelta(hours=12)).isoformat()
+
+    def _merge_vehicle_segment(self, target: dict[str, Any], vehicle: dict[str, Any]) -> None:
+        """Merge a segment payload into a unified vehicle structure."""
+        vehicle_id = self._coerce_vehicle_id(vehicle)
+        if vehicle_id is None:
+            return
+
+        target["vehicle_id"] = vehicle_id
+        target["updated_at"] = vehicle.get("updated_at", target.get("updated_at"))
+
+        if isinstance(vehicle.get("name"), str):
+            target["name"] = vehicle["name"]
+        if isinstance(vehicle.get("package"), str):
+            target["package"] = vehicle["package"]
+        if isinstance(vehicle.get("capabilities"), Mapping):
+            target.setdefault("capabilities", {})
+            target["capabilities"].update(vehicle["capabilities"])
+
+        location = vehicle.get("location")
+        if isinstance(location, Mapping):
+            target.setdefault("location", {})
+            target["location"].update({key: value for key, value in location.items()})
+
+        state = vehicle.get("state")
+        if isinstance(state, Mapping):
+            target.setdefault("state", {})
+            state_dict = dict(state)
+            nested_capabilities = state_dict.pop("capabilities", None)
+            if isinstance(state_dict.get("name"), str):
+                target["name"] = state_dict["name"]
+            if isinstance(state_dict.get("package"), str):
+                target["package"] = state_dict["package"]
+            if isinstance(nested_capabilities, Mapping):
+                target.setdefault("capabilities", {})
+                target["capabilities"].update(nested_capabilities)
+            target["state"].update(state_dict)
+
+    def _coerce_vehicle_id(self, vehicle: Mapping[str, Any]) -> str | None:
+        """Get vehicle id from different backend payload variants."""
+        value = vehicle.get("vehicle_id", vehicle.get("id"))
+        if value is None:
+            return None
+        return str(value)

@@ -1,4 +1,5 @@
 {
   "name": "Sentrymo",
-  "render_readme": true
+  "render_readme": true,
+  "domains": ["sentrymo"]
 }

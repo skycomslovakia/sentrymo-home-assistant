@@ -1,10 +1,10 @@
 {
   "domain": "sentrymo",
   "name": "Sentrymo",
-  "version": "0.1.0-alpha",
+  "version": "0.1.0",
   "codeowners": ["@skycomslovakia"],
   "config_flow": true,
-  "documentation": "https://sentrymo.eu",
+  "documentation": "https://github.com/skycomslovakia/sentrymo-home-assistant",
   "issue_tracker": "https://github.com/skycomslovakia/sentrymo-home-assistant/issues",
   "iot_class": "cloud_polling",
   "integration_type": "hub",

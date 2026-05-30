@@ -1,0 +1,10 @@
+refresh:
+  name: Refresh Sentrymo data
+  description: Force an immediate snapshot refresh for one Sentrymo config entry or for all entries.
+  fields:
+    entry_id:
+      name: Entry ID
+      description: Optional Home Assistant config entry ID to refresh. When omitted, all Sentrymo entries are refreshed.
+      required: false
+      selector:
+        text:
