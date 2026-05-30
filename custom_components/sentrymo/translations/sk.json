@@ -1,0 +1,24 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Sentrymo",
+        "description": "Prepoj Sentrymo vozidlá s Home Assistant.",
+        "data": {
+          "name": "Názov",
+          "api_url": "API URL",
+          "setup_key": "Setup key",
+          "cpin": "CPIN"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Pripojenie zlyhalo",
+      "invalid_auth": "Neplatné prihlásenie",
+      "unknown": "Neočakávaná chyba"
+    },
+    "abort": {
+      "already_configured": "Sentrymo je už nastavené"
+    }
+  }
+}

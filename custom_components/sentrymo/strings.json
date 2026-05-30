@@ -1,0 +1,24 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Sentrymo",
+        "description": "Connect Sentrymo vehicles to Home Assistant.",
+        "data": {
+          "name": "Name",
+          "api_url": "API URL",
+          "setup_key": "Setup key",
+          "cpin": "CPIN"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Failed to connect",
+      "invalid_auth": "Invalid authentication",
+      "unknown": "Unexpected error"
+    },
+    "abort": {
+      "already_configured": "Sentrymo is already configured"
+    }
+  }
+}
