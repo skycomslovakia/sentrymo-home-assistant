@@ -4,11 +4,10 @@ Custom Home Assistant integration for Sentrymo vehicle security, tracking and al
 
 ## Features
 
-- Vehicle location as Home Assistant device tracker
+- Vehicle location as a Home Assistant device tracker
 - Alarm, crash and protection status
 - Vehicle telemetry sensors
 - Optional commands protected by CPIN
-- Rider and Legend package support
 
 ## Installation
 

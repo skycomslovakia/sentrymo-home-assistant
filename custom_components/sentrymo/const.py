@@ -3,6 +3,7 @@
 DOMAIN = "sentrymo"
 
 CONF_API_URL = "api_url"
+CONF_SETUP_KEY = "setup_key"
 CONF_ACCESS_TOKEN = "access_token"
 CONF_REFRESH_TOKEN = "refresh_token"
 CONF_CPIN = "cpin"
