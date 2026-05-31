@@ -7,8 +7,10 @@ from typing import Any
 from homeassistant.components.select import SelectEntity
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, callback
+from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
+from .api import SentrymoApiError, SentrymoCommandError
 from .const import (
     DATA_CLIENT,
     DATA_COORDINATOR,
@@ -61,6 +63,21 @@ _PROTECTION_MODE_LABELS: dict[str, dict[str, str]] = {
         PROTECTION_MODE_MANUAL: "Enabled",
     },
 }
+
+
+def _protection_state_updates(mode: str) -> dict[str, Any]:
+    """Return optimistic state updates for a selected protection mode."""
+    return {
+        "protection_mode": mode,
+        "protection_active": mode != PROTECTION_MODE_DISABLED,
+    }
+
+
+def _protection_mode_error_message(err: SentrymoApiError) -> str:
+    """Build a user-facing protection mode error message."""
+    if isinstance(err, SentrymoCommandError):
+        return f"Zmena rezimu ochrany zlyhala: {err}"
+    return f"Nepodarilo sa kontaktovat Sentrymo pri zmene rezimu ochrany: {err}"
 
 
 async def async_setup_entry(
@@ -164,5 +181,13 @@ class SentrymoProtectionModeSelect(SentrymoEntity, SelectEntity):
         if backend_option not in PROTECTION_MODE_OPTIONS:
             return
 
-        await self.client.async_set_protection_mode(self.vehicle_id, backend_option)
-        await self.coordinator.async_force_refresh()
+        try:
+            await self.client.async_set_protection_mode(self.vehicle_id, backend_option)
+        except SentrymoApiError as err:
+            raise HomeAssistantError(_protection_mode_error_message(err)) from err
+
+        self.coordinator.async_apply_vehicle_state(
+            self.vehicle_id,
+            **_protection_state_updates(backend_option),
+        )
+        self.hass.async_create_task(self.coordinator.async_refresh_after_delay(1.5))

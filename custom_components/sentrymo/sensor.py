@@ -237,16 +237,19 @@ SENSOR_DESCRIPTIONS: tuple[SentrymoSensorDescription, ...] = (
         key="protection_mode",
         translation_key="protection_mode",
         always_create=True,
+        icon="mdi:shield",
         value_fn=lambda vehicle: _vehicle_state(vehicle).get("protection_mode"),
     ),
     SentrymoSensorDescription(
         key="sleep_state",
         translation_key="sleep_state",
+        icon="mdi:sleep",
         value_fn=lambda vehicle: _vehicle_state(vehicle).get("sleep_state"),
     ),
     SentrymoSensorDescription(
         key="gnss_state",
         translation_key="gnss_state",
+        icon="mdi:crosshairs-gps",
         value_fn=lambda vehicle: _vehicle_state(vehicle).get("gnss_state"),
     ),
     SentrymoSensorDescription(
@@ -257,9 +260,9 @@ SENSOR_DESCRIPTIONS: tuple[SentrymoSensorDescription, ...] = (
     SentrymoSensorDescription(
         key="fuel_level",
         translation_key="fuel_level",
-        native_unit_of_measurement=PERCENTAGE,
+        native_unit_of_measurement="l",
         state_class=SensorStateClass.MEASUREMENT,
-        value_fn=lambda vehicle: _first_value(vehicle, "fuel_level_percent", "fuel_level"),
+        value_fn=lambda vehicle: _first_value(vehicle, "fuel_level_litres", "fuel_level"),
     ),
     SentrymoSensorDescription(
         key="engine_rpm",
@@ -267,6 +270,7 @@ SENSOR_DESCRIPTIONS: tuple[SentrymoSensorDescription, ...] = (
         native_unit_of_measurement="rpm",
         state_class=SensorStateClass.MEASUREMENT,
         entity_registry_enabled_default=False,
+        icon="mdi:turbine",
         value_fn=lambda vehicle: _vehicle_state(vehicle).get("engine_rpm"),
     ),
     SentrymoSensorDescription(
@@ -283,6 +287,7 @@ SENSOR_DESCRIPTIONS: tuple[SentrymoSensorDescription, ...] = (
         translation_key="satellites",
         state_class=SensorStateClass.MEASUREMENT,
         entity_registry_enabled_default=False,
+        icon="mdi:satellite-variant",
         value_fn=lambda vehicle: _vehicle_state(vehicle).get("satellites"),
     ),
     SentrymoSensorDescription(

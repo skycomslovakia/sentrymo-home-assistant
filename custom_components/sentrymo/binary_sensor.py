@@ -40,12 +40,14 @@ BINARY_SENSOR_DESCRIPTIONS: tuple[SentrymoBinarySensorDescription, ...] = (
         translation_key="moving",
         device_class=BinarySensorDeviceClass.MOVING,
         always_create=True,
+        icon="mdi:motion",
         value_fn=lambda vehicle: _state(vehicle).get("moving"),
     ),
     SentrymoBinarySensorDescription(
         key="ignition",
         translation_key="ignition",
         device_class=BinarySensorDeviceClass.POWER,
+        icon="mdi:key-variant",
         value_fn=lambda vehicle: _state(vehicle).get("ignition"),
     ),
     SentrymoBinarySensorDescription(
@@ -121,6 +123,14 @@ BINARY_SENSOR_DESCRIPTIONS: tuple[SentrymoBinarySensorDescription, ...] = (
         device_class=BinarySensorDeviceClass.DOOR,
         entity_registry_enabled_default=False,
         value_fn=lambda vehicle: _state(vehicle).get("doors_open"),
+    ),
+    SentrymoBinarySensorDescription(
+        key="bt_connected",
+        translation_key="bt_connected",
+        device_class=BinarySensorDeviceClass.CONNECTIVITY,
+        entity_registry_enabled_default=False,
+        icon_fn=lambda value: "mdi:bluetooth" if value else "mdi:bluetooth-off",
+        value_fn=lambda vehicle: _state(vehicle).get("bt_connected"),
     ),
 )
 

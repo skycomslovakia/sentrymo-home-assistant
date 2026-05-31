@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from datetime import timedelta
 import logging
 from typing import Any
@@ -28,6 +29,46 @@ class SentrymoDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             update_interval=DEFAULT_POLL_INTERVAL,
         )
         self.client = client
+
+    def async_apply_vehicle_state(self, vehicle_id: str | int, **state_updates: Any) -> None:
+        """Apply a local optimistic state update for a vehicle."""
+        current = self.data or {}
+        vehicles = current.get("vehicles")
+        if not isinstance(vehicles, list):
+            return
+
+        target = str(vehicle_id)
+        updated_vehicles: list[dict[str, Any]] = []
+        changed = False
+
+        for vehicle in vehicles:
+            if not isinstance(vehicle, dict):
+                updated_vehicles.append(vehicle)
+                continue
+
+            if str(vehicle.get("vehicle_id")) != target:
+                updated_vehicles.append(vehicle)
+                continue
+
+            updated_vehicle = dict(vehicle)
+            state = updated_vehicle.get("state", {})
+            updated_state = dict(state) if isinstance(state, dict) else {}
+            updated_state.update(state_updates)
+            updated_vehicle["state"] = updated_state
+            updated_vehicles.append(updated_vehicle)
+            changed = True
+
+        if not changed:
+            return
+
+        snapshot = dict(current)
+        snapshot["vehicles"] = updated_vehicles
+        self.async_set_updated_data(snapshot)
+
+    async def async_refresh_after_delay(self, delay_seconds: float) -> None:
+        """Refresh after a short delay to reconcile optimistic updates."""
+        await asyncio.sleep(delay_seconds)
+        await self.async_force_refresh()
 
     @property
     def vehicles(self) -> list[dict[str, Any]]:

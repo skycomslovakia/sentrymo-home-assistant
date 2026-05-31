@@ -8,10 +8,11 @@ import voluptuous as vol
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, ServiceCall
+from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.typing import ConfigType
 
-from .api import SentrymoApiClient
+from .api import SentrymoApiClient, SentrymoApiError, SentrymoCommandError
 from .const import (
     ATTR_ENTRY_ID,
     ATTR_MODE,
@@ -27,11 +28,27 @@ from .const import (
     DATA_SERVICES_REGISTERED,
     DOMAIN,
     PLATFORMS,
+    PROTECTION_MODE_DISABLED,
     PROTECTION_MODE_OPTIONS,
     SERVICE_REFRESH,
     SERVICE_SET_PROTECTION_MODE,
 )
 from .coordinator import SentrymoDataUpdateCoordinator
+
+
+def _protection_state_updates(mode: str) -> dict[str, bool | str]:
+    """Return optimistic state updates for a selected protection mode."""
+    return {
+        "protection_mode": mode,
+        "protection_active": mode != PROTECTION_MODE_DISABLED,
+    }
+
+
+def _protection_mode_error_message(err: SentrymoApiError) -> str:
+    """Build a user-facing protection mode error message."""
+    if isinstance(err, SentrymoCommandError):
+        return f"Zmena rezimu ochrany zlyhala: {err}"
+    return f"Nepodarilo sa kontaktovat Sentrymo pri zmene rezimu ochrany: {err}"
 
 
 async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
@@ -141,8 +158,12 @@ async def _async_register_services(hass: HomeAssistant) -> None:
             coordinator = data[DATA_COORDINATOR]
             if coordinator.vehicle_by_id(vehicle_id) is None:
                 continue
-            await data[DATA_CLIENT].async_set_protection_mode(vehicle_id, mode)
-            await coordinator.async_force_refresh()
+            try:
+                await data[DATA_CLIENT].async_set_protection_mode(vehicle_id, mode)
+            except SentrymoApiError as err:
+                raise HomeAssistantError(_protection_mode_error_message(err)) from err
+            coordinator.async_apply_vehicle_state(vehicle_id, **_protection_state_updates(mode))
+            hass.async_create_task(coordinator.async_refresh_after_delay(1.5))
             return
 
     hass.services.async_register(
