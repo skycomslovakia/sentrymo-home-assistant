@@ -13,6 +13,9 @@ from .const import (
     DATA_CLIENT,
     DATA_COORDINATOR,
     DOMAIN,
+    PROTECTION_MODE_AUTOMATIC,
+    PROTECTION_MODE_DISABLED,
+    PROTECTION_MODE_MANUAL,
     PROTECTION_MODE_OPTIONS,
 )
 from .coordinator import SentrymoDataUpdateCoordinator
@@ -39,6 +42,25 @@ def _supports_protection_commands(vehicle: dict[str, Any]) -> bool:
         or capabilities.get("commands_enabled")
         or capabilities.get("commands")
     )
+
+
+_PROTECTION_MODE_LABELS: dict[str, dict[str, str]] = {
+    "sk": {
+        PROTECTION_MODE_AUTOMATIC: "Automaticky",
+        PROTECTION_MODE_DISABLED: "Vypnutá",
+        PROTECTION_MODE_MANUAL: "Zapnutá",
+    },
+    "cs": {
+        PROTECTION_MODE_AUTOMATIC: "Automaticky",
+        PROTECTION_MODE_DISABLED: "Vypnutá",
+        PROTECTION_MODE_MANUAL: "Zapnutá",
+    },
+    "en": {
+        PROTECTION_MODE_AUTOMATIC: "Automatic",
+        PROTECTION_MODE_DISABLED: "Disabled",
+        PROTECTION_MODE_MANUAL: "Enabled",
+    },
+}
 
 
 async def async_setup_entry(
@@ -83,8 +105,6 @@ class SentrymoProtectionModeSelect(SentrymoEntity, SelectEntity):
 
     _attr_has_entity_name = True
     _attr_translation_key = "protection_mode_control"
-    _attr_options = PROTECTION_MODE_OPTIONS
-
     def __init__(
         self,
         coordinator: SentrymoDataUpdateCoordinator,
@@ -95,18 +115,41 @@ class SentrymoProtectionModeSelect(SentrymoEntity, SelectEntity):
         super().__init__(coordinator, vehicle_id, "protection_mode_control")
         self.client = client
 
+    def _language(self) -> str:
+        """Return the active Home Assistant language code."""
+        language = str(getattr(self.hass.config, "language", "en")).lower()
+        return language.replace("_", "-").split("-", maxsplit=1)[0]
+
+    def _label_for_mode(self, mode: str) -> str:
+        """Return the display label for a backend mode."""
+        labels = _PROTECTION_MODE_LABELS.get(self._language(), _PROTECTION_MODE_LABELS["en"])
+        return labels.get(mode, mode)
+
+    def _mode_for_label(self, label: str) -> str | None:
+        """Return the backend mode for a displayed label."""
+        for language_labels in _PROTECTION_MODE_LABELS.values():
+            for mode, mode_label in language_labels.items():
+                if mode_label == label:
+                    return mode
+        return label if label in PROTECTION_MODE_OPTIONS else None
+
+    @property
+    def options(self) -> list[str]:
+        """Return translated protection mode options."""
+        return [self._label_for_mode(mode) for mode in PROTECTION_MODE_OPTIONS]
+
     @property
     def current_option(self) -> str | None:
         """Return current protection mode."""
         value = _state(self.vehicle).get("protection_mode")
         if isinstance(value, str) and value in PROTECTION_MODE_OPTIONS:
-            return value
+            return self._label_for_mode(value)
 
         if _state(self.vehicle).get("protection_active") is True:
-            return "manual"
+            return self._label_for_mode(PROTECTION_MODE_MANUAL)
 
         if _state(self.vehicle).get("protection_active") is False:
-            return "disabled"
+            return self._label_for_mode(PROTECTION_MODE_DISABLED)
 
         return None
 
@@ -117,8 +160,9 @@ class SentrymoProtectionModeSelect(SentrymoEntity, SelectEntity):
 
     async def async_select_option(self, option: str) -> None:
         """Set protection mode."""
-        if option not in PROTECTION_MODE_OPTIONS:
+        backend_option = self._mode_for_label(option)
+        if backend_option not in PROTECTION_MODE_OPTIONS:
             return
 
-        await self.client.async_set_protection_mode(self.vehicle_id, option)
+        await self.client.async_set_protection_mode(self.vehicle_id, backend_option)
         await self.coordinator.async_force_refresh()

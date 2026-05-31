@@ -56,7 +56,7 @@
         "name": "Rýchlosť"
       },
       "external_voltage": {
-        "name": "Napájecí napětí"
+        "name": "Palubní napětí"
       },
       "internal_battery": {
         "name": "Interná batéria"
@@ -118,7 +118,11 @@
         "name": "Pohyb"
       },
       "driving": {
-        "name": "Jízda"
+        "name": "Jízda",
+        "state": {
+          "on": "Spuštěné",
+          "off": "Není spuštěné"
+        }
       },
       "ignition": {
         "name": "Zapalování"

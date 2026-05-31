@@ -31,6 +31,7 @@ class SentrymoBinarySensorDescription(BinarySensorEntityDescription):
 
     value_fn: Callable[[dict[str, Any]], Any]
     always_create: bool = False
+    icon_fn: Callable[[bool | None], str | None] | None = None
 
 
 BINARY_SENSOR_DESCRIPTIONS: tuple[SentrymoBinarySensorDescription, ...] = (
@@ -56,6 +57,7 @@ BINARY_SENSOR_DESCRIPTIONS: tuple[SentrymoBinarySensorDescription, ...] = (
     SentrymoBinarySensorDescription(
         key="immo",
         translation_key="immo",
+        icon_fn=lambda value: "mdi:lock-outline" if value else "mdi:lock-open-variant-outline",
         value_fn=lambda vehicle: _state(vehicle).get("immo"),
     ),
     SentrymoBinarySensorDescription(
@@ -68,6 +70,7 @@ BINARY_SENSOR_DESCRIPTIONS: tuple[SentrymoBinarySensorDescription, ...] = (
         key="protection_active",
         translation_key="protection_active",
         always_create=True,
+        icon_fn=lambda value: "mdi:shield-lock" if value else "mdi:shield-lock-open",
         value_fn=lambda vehicle: _state(vehicle).get("protection_active"),
     ),
     SentrymoBinarySensorDescription(
@@ -75,6 +78,7 @@ BINARY_SENSOR_DESCRIPTIONS: tuple[SentrymoBinarySensorDescription, ...] = (
         translation_key="alarm_active",
         device_class=BinarySensorDeviceClass.PROBLEM,
         always_create=True,
+        icon_fn=lambda value: "mdi:alarm-light" if value else "mdi:alarm-light-off",
         value_fn=lambda vehicle: _state(vehicle).get("alarm_active"),
     ),
     SentrymoBinarySensorDescription(
@@ -89,12 +93,13 @@ BINARY_SENSOR_DESCRIPTIONS: tuple[SentrymoBinarySensorDescription, ...] = (
         translation_key="online",
         device_class=BinarySensorDeviceClass.CONNECTIVITY,
         always_create=True,
+        icon_fn=lambda value: "mdi:car-connected" if value else "mdi:car-off",
         value_fn=lambda vehicle: _state(vehicle).get("online"),
     ),
     SentrymoBinarySensorDescription(
         key="driving",
         translation_key="driving",
-        device_class=BinarySensorDeviceClass.MOVING,
+        icon="mdi:file-image-marker-outline",
         value_fn=lambda vehicle: _state(vehicle).get("driving"),
     ),
     SentrymoBinarySensorDescription(
@@ -116,13 +121,6 @@ BINARY_SENSOR_DESCRIPTIONS: tuple[SentrymoBinarySensorDescription, ...] = (
         device_class=BinarySensorDeviceClass.DOOR,
         entity_registry_enabled_default=False,
         value_fn=lambda vehicle: _state(vehicle).get("doors_open"),
-    ),
-    SentrymoBinarySensorDescription(
-        key="bt_connected",
-        translation_key="bt_connected",
-        device_class=BinarySensorDeviceClass.CONNECTIVITY,
-        entity_registry_enabled_default=False,
-        value_fn=lambda vehicle: _state(vehicle).get("bt_connected"),
     ),
 )
 
@@ -194,3 +192,11 @@ class SentrymoBinarySensor(SentrymoEntity, BinarySensorEntity):
         """Return true if the binary sensor is on."""
         value = self.entity_description.value_fn(self.vehicle)
         return None if value is None else bool(value)
+
+    @property
+    def icon(self) -> str | None:
+        """Return the configured binary sensor icon."""
+        value = self.is_on
+        if self.entity_description.icon_fn is not None:
+            return self.entity_description.icon_fn(value)
+        return self.entity_description.icon

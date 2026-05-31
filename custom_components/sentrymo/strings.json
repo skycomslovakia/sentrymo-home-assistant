@@ -56,7 +56,7 @@
         "name": "Speed"
       },
       "external_voltage": {
-        "name": "Power voltage"
+        "name": "Board voltage"
       },
       "internal_battery": {
         "name": "Internal battery"
@@ -118,7 +118,11 @@
         "name": "Moving"
       },
       "driving": {
-        "name": "Driving"
+        "name": "Driving",
+        "state": {
+          "on": "Started",
+          "off": "Not started"
+        }
       },
       "ignition": {
         "name": "Ignition"

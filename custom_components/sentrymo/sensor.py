@@ -48,12 +48,34 @@ def _vehicle_location(vehicle: dict[str, Any]) -> dict[str, Any]:
 
 
 def _scale_gsm_signal(value: Any) -> int | None:
-    """Scale backend GSM signal strength to percentage."""
+    """Normalize backend GSM signal strength to the raw 0-5 scale."""
     if not isinstance(value, (int, float)):
         return None
     if value <= 5:
-        return max(0, min(100, int(round((float(value) / 5) * 100))))
-    return max(0, min(100, int(value)))
+        return max(0, min(5, int(round(float(value)))))
+    return max(0, min(5, int(round((float(value) / 100) * 5))))
+
+
+def _gsm_signal_icon(vehicle: dict[str, Any]) -> str:
+    """Return GSM icon for the normalized signal level."""
+    level = _scale_gsm_signal(_vehicle_state(vehicle).get("gsm_signal"))
+    icon_by_level = {
+        0: "mdi:network-strength-off",
+        1: "mdi:network-strength-1",
+        2: "mdi:network-strength-2",
+        3: "mdi:network-strength-3",
+        4: "mdi:network-strength-4",
+        5: "mdi:network-strength-4",
+    }
+    return icon_by_level.get(level, "mdi:network-strength-off")
+
+
+def _external_voltage(vehicle: dict[str, Any]) -> float | None:
+    """Return external voltage rounded to one decimal place."""
+    value = _vehicle_state(vehicle).get("external_voltage")
+    if not isinstance(value, (int, float)):
+        return None
+    return round(float(value), 1)
 
 
 def _first_value(vehicle: dict[str, Any], *keys: str) -> Any:
@@ -132,6 +154,7 @@ class SentrymoSensorDescription(SensorEntityDescription):
 
     value_fn: Callable[[dict[str, Any]], Any]
     always_create: bool = False
+    icon_fn: Callable[[dict[str, Any]], str | None] | None = None
 
 
 SENSOR_DESCRIPTIONS: tuple[SentrymoSensorDescription, ...] = (
@@ -151,7 +174,8 @@ SENSOR_DESCRIPTIONS: tuple[SentrymoSensorDescription, ...] = (
         device_class=SensorDeviceClass.VOLTAGE,
         state_class=SensorStateClass.MEASUREMENT,
         always_create=True,
-        value_fn=lambda vehicle: _vehicle_state(vehicle).get("external_voltage"),
+        icon="mdi:car-battery",
+        value_fn=_external_voltage,
     ),
     SentrymoSensorDescription(
         key="internal_battery",
@@ -165,10 +189,10 @@ SENSOR_DESCRIPTIONS: tuple[SentrymoSensorDescription, ...] = (
     SentrymoSensorDescription(
         key="gsm_signal",
         translation_key="gsm_signal",
-        native_unit_of_measurement=PERCENTAGE,
         state_class=SensorStateClass.MEASUREMENT,
         always_create=True,
         value_fn=lambda vehicle: _scale_gsm_signal(_vehicle_state(vehicle).get("gsm_signal")),
+        icon_fn=_gsm_signal_icon,
     ),
     SentrymoSensorDescription(
         key="odometer",
@@ -176,6 +200,7 @@ SENSOR_DESCRIPTIONS: tuple[SentrymoSensorDescription, ...] = (
         native_unit_of_measurement=UnitOfLength.KILOMETERS,
         device_class=SensorDeviceClass.DISTANCE,
         state_class=SensorStateClass.TOTAL_INCREASING,
+        icon="mdi:counter",
         value_fn=lambda vehicle: _vehicle_state(vehicle).get("odometer_km"),
     ),
     SentrymoSensorDescription(
@@ -197,6 +222,9 @@ SENSOR_DESCRIPTIONS: tuple[SentrymoSensorDescription, ...] = (
         key="alarm_state",
         translation_key="alarm_state",
         always_create=True,
+        icon_fn=lambda vehicle: (
+            "mdi:alarm-light" if _vehicle_state(vehicle).get("alarm_active") else "mdi:alarm-light-off"
+        ),
         value_fn=lambda vehicle: _vehicle_state(vehicle).get("alarm_state"),
     ),
     SentrymoSensorDescription(
@@ -268,12 +296,14 @@ SENSOR_DESCRIPTIONS: tuple[SentrymoSensorDescription, ...] = (
         key="address",
         translation_key="address",
         entity_registry_enabled_default=False,
+        icon="mdi:map-marker",
         value_fn=_address,
     ),
     SentrymoSensorDescription(
         key="places",
         translation_key="places",
         entity_registry_enabled_default=False,
+        icon="mdi:map-legend",
         value_fn=_places,
     ),
 )
@@ -349,3 +379,10 @@ class SentrymoSensor(SentrymoEntity, SensorEntity):
     def native_value(self) -> Any:
         """Return native value."""
         return self.entity_description.value_fn(self.vehicle)
+
+    @property
+    def icon(self) -> str | None:
+        """Return the configured sensor icon."""
+        if self.entity_description.icon_fn is not None:
+            return self.entity_description.icon_fn(self.vehicle)
+        return self.entity_description.icon
