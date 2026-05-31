@@ -10,6 +10,7 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, ServiceCall
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
+from homeassistant.helpers import device_registry as dr, entity_registry as er
 from homeassistant.helpers.typing import ConfigType
 
 from .api import SentrymoApiClient, SentrymoApiError, SentrymoCommandError
@@ -61,6 +62,7 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up Sentrymo from a config entry."""
     hass.data.setdefault(DOMAIN, {})
+    await _async_migrate_entity_identity_scope(hass, entry)
 
     async def _async_update_tokens(tokens: dict[str, str]) -> None:
         data = dict(entry.data)
@@ -77,7 +79,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         token_update_callback=_async_update_tokens,
     )
     await _async_restore_tokens(entry, client, hass)
-    coordinator = SentrymoDataUpdateCoordinator(hass, client)
+    coordinator = SentrymoDataUpdateCoordinator(hass, client, entry.entry_id)
     await coordinator.async_config_entry_first_refresh()
 
     hass.data[DOMAIN][entry.entry_id] = {
@@ -142,6 +144,41 @@ async def _async_restore_tokens(
     hass.config_entries.async_update_entry(entry, data=data)
 
 
+async def _async_migrate_entity_identity_scope(hass: HomeAssistant, entry: ConfigEntry) -> None:
+    """Migrate legacy entity and device identifiers to entry-scoped values."""
+    entity_registry = er.async_get(hass)
+    for entity_entry in er.async_entries_for_config_entry(entity_registry, entry.entry_id):
+        if not entity_entry.unique_id.startswith("sentrymo_"):
+            continue
+        if entity_entry.unique_id.startswith(f"sentrymo_{entry.entry_id}_"):
+            continue
+        entity_registry.async_update_entity(
+            entity_entry.entity_id,
+            new_unique_id=entity_entry.unique_id.replace(
+                "sentrymo_",
+                f"sentrymo_{entry.entry_id}_",
+                1,
+            ),
+        )
+
+    device_registry = dr.async_get(hass)
+    for device_entry in dr.async_entries_for_config_entry(device_registry, entry.entry_id):
+        updated_identifiers = {
+            (
+                identifier_domain,
+                identifier_value
+                if identifier_domain != DOMAIN or identifier_value.startswith(f"{entry.entry_id}_")
+                else f"{entry.entry_id}_{identifier_value}",
+            )
+            for identifier_domain, identifier_value in device_entry.identifiers
+        }
+        if updated_identifiers != device_entry.identifiers:
+            device_registry.async_update_device(
+                device_entry.id,
+                new_identifiers=updated_identifiers,
+            )
+
+
 async def _async_register_services(hass: HomeAssistant) -> None:
     """Register services once per domain."""
     if hass.data[DOMAIN].get(DATA_SERVICES_REGISTERED):
@@ -154,10 +191,22 @@ async def _async_register_services(hass: HomeAssistant) -> None:
     async def async_handle_set_protection_mode(call: ServiceCall) -> None:
         vehicle_id = str(call.data[ATTR_VEHICLE_ID])
         mode = str(call.data[ATTR_MODE])
-        for data in _iter_entry_data(hass, call.data.get(ATTR_ENTRY_ID)):
+        matching_entries = [
+            data
+            for data in _iter_entry_data(hass, call.data.get(ATTR_ENTRY_ID))
+            if data[DATA_COORDINATOR].vehicle_by_id(vehicle_id) is not None
+        ]
+
+        if not matching_entries:
+            return
+
+        if call.data.get(ATTR_ENTRY_ID) is None and len(matching_entries) > 1:
+            raise HomeAssistantError(
+                "Vozidlo bolo najdene na viacerych serveroch. Pri volani sluzby zadaj entry_id."
+            )
+
+        for data in matching_entries:
             coordinator = data[DATA_COORDINATOR]
-            if coordinator.vehicle_by_id(vehicle_id) is None:
-                continue
             try:
                 await data[DATA_CLIENT].async_set_protection_mode(vehicle_id, mode)
             except SentrymoApiError as err:

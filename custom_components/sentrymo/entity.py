@@ -52,7 +52,7 @@ class SentrymoEntity(CoordinatorEntity[SentrymoDataUpdateCoordinator]):
     @property
     def unique_id(self) -> str:
         """Return unique id."""
-        return f"sentrymo_{self.vehicle_id}_{self.entity_key}"
+        return f"sentrymo_{self.coordinator.instance_id}_{self.vehicle_id}_{self.entity_key}"
 
     @property
     def device_info(self) -> DeviceInfo:
@@ -60,7 +60,7 @@ class SentrymoEntity(CoordinatorEntity[SentrymoDataUpdateCoordinator]):
         package = self.vehicle.get("package")
         model = package.title() if isinstance(package, str) and package else "Vehicle"
         return DeviceInfo(
-            identifiers={(DOMAIN, self.vehicle_id)},
+            identifiers={(DOMAIN, f"{self.coordinator.instance_id}_{self.vehicle_id}")},
             manufacturer="Sentrymo",
             name=str(self.vehicle.get("name") or f"Vehicle {self.vehicle_id}"),
             model=model,

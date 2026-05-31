@@ -36,7 +36,8 @@ class SentrymoConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         errors: dict[str, str] = {}
 
         if user_input is not None:
-            await self.async_set_unique_id("sentrymo")
+            normalized_api_url = SentrymoApiClient.normalize_api_url(user_input[CONF_API_URL])
+            await self.async_set_unique_id(normalized_api_url.lower())
             self._abort_if_unique_id_configured()
 
             cpin = (user_input.get(CONF_CPIN) or "").strip()

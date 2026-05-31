@@ -20,7 +20,12 @@ _LOGGER = logging.getLogger(__name__)
 class SentrymoDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
     """Coordinate Sentrymo snapshot updates."""
 
-    def __init__(self, hass: HomeAssistant, client: SentrymoApiClient) -> None:
+    def __init__(
+        self,
+        hass: HomeAssistant,
+        client: SentrymoApiClient,
+        instance_id: str,
+    ) -> None:
         """Initialize the coordinator."""
         super().__init__(
             hass,
@@ -29,6 +34,7 @@ class SentrymoDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             update_interval=DEFAULT_POLL_INTERVAL,
         )
         self.client = client
+        self.instance_id = instance_id
 
     def async_apply_vehicle_state(self, vehicle_id: str | int, **state_updates: Any) -> None:
         """Apply a local optimistic state update for a vehicle."""
