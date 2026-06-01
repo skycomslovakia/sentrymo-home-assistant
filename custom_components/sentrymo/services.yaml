@@ -35,3 +35,49 @@ set_protection_mode:
       required: false
       selector:
         text:
+
+set_immobilizer:
+  name: Set immobilizer
+  description: Activate or deactivate the Sentrymo immobilizer output. This uses the CPIN stored during pairing.
+  fields:
+    vehicle_id:
+      name: Vehicle ID
+      description: Sentrymo vehicle ID.
+      required: true
+      selector:
+        text:
+    enabled:
+      name: Enabled
+      description: Turn the immobilizer output on or off.
+      required: true
+      selector:
+        boolean:
+    entry_id:
+      name: Entry ID
+      description: Optional Home Assistant config entry ID.
+      required: false
+      selector:
+        text:
+
+set_accessory:
+  name: Set accessory
+  description: Activate or deactivate the Sentrymo accessory output. This uses the CPIN stored during pairing.
+  fields:
+    vehicle_id:
+      name: Vehicle ID
+      description: Sentrymo vehicle ID.
+      required: true
+      selector:
+        text:
+    enabled:
+      name: Enabled
+      description: Turn the accessory output on or off.
+      required: true
+      selector:
+        boolean:
+    entry_id:
+      name: Entry ID
+      description: Optional Home Assistant config entry ID.
+      required: false
+      selector:
+        text:

@@ -17,10 +17,14 @@ from .const import (
     API_AUTH_REFRESH,
     API_PROFILE,
     API_STATE_CONFIG,
-    API_STATE_FAST,
     API_STATE_SLOW,
+    API_STATE_FAST,
     API_STATE_TELEMETRY,
     API_VEHICLES,
+    COMMAND_ACCESSORY_ACTIVATE,
+    COMMAND_ACCESSORY_DEACTIVATE,
+    COMMAND_IMMOBILIZER_ACTIVATE,
+    COMMAND_IMMOBILIZER_DEACTIVATE,
     COMMAND_PROTECTION_ACTIVATE,
     COMMAND_PROTECTION_AUTO,
     COMMAND_PROTECTION_DEACTIVATE,
@@ -354,6 +358,28 @@ class SentrymoApiClient:
             raise SentrymoCommandError(f"Unsupported protection mode: {mode}")
 
         return await self.async_send_command(vehicle_id, command, {"mode": mode})
+
+    async def async_set_immobilizer_active(
+        self,
+        vehicle_id: int | str,
+        enabled: bool,
+    ) -> dict[str, Any]:
+        """Activate or deactivate the immobilizer output."""
+        command = (
+            COMMAND_IMMOBILIZER_ACTIVATE
+            if enabled
+            else COMMAND_IMMOBILIZER_DEACTIVATE
+        )
+        return await self.async_send_command(vehicle_id, command)
+
+    async def async_set_accessory_active(
+        self,
+        vehicle_id: int | str,
+        enabled: bool,
+    ) -> dict[str, Any]:
+        """Activate or deactivate the accessory output."""
+        command = COMMAND_ACCESSORY_ACTIVATE if enabled else COMMAND_ACCESSORY_DEACTIVATE
+        return await self.async_send_command(vehicle_id, command)
 
     async def _get_segment(self, segment: str, path: str, *, force: bool = False) -> dict[str, Any]:
         """Fetch a state segment with cache windows based on backend polling."""

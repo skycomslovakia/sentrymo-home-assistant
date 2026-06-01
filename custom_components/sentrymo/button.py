@@ -11,10 +11,8 @@ from .const import DATA_COORDINATOR, DOMAIN
 from .coordinator import SentrymoDataUpdateCoordinator
 from .entity import SentrymoEntity
 
-# Keep the entity key `refresh_snapshot` for backward compatibility with older releases,
-# but show it in UI as "Refresh data" through translation_key.
 REFRESH_DESCRIPTION = ButtonEntityDescription(
-    key="refresh_snapshot",
+    key="refresh_data",
     translation_key="refresh_data",
 )
 

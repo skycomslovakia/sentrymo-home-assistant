@@ -11,10 +11,12 @@ from homeassistant.core import HomeAssistant, ServiceCall
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers import device_registry as dr, entity_registry as er
+from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers.typing import ConfigType
 
 from .api import SentrymoApiClient, SentrymoApiError, SentrymoCommandError
 from .const import (
+    ATTR_ENABLED,
     ATTR_ENTRY_ID,
     ATTR_MODE,
     ATTR_VEHICLE_ID,
@@ -32,6 +34,8 @@ from .const import (
     PROTECTION_MODE_DISABLED,
     PROTECTION_MODE_OPTIONS,
     SERVICE_REFRESH,
+    SERVICE_SET_ACCESSORY,
+    SERVICE_SET_IMMOBILIZER,
     SERVICE_SET_PROTECTION_MODE,
 )
 from .coordinator import SentrymoDataUpdateCoordinator
@@ -50,6 +54,13 @@ def _protection_mode_error_message(err: SentrymoApiError) -> str:
     if isinstance(err, SentrymoCommandError):
         return f"Zmena rezimu ochrany zlyhala: {err}"
     return f"Nepodarilo sa kontaktovat Sentrymo pri zmene rezimu ochrany: {err}"
+
+
+def _output_error_message(label: str, err: SentrymoApiError) -> str:
+    """Build a user-facing output error message."""
+    if isinstance(err, SentrymoCommandError):
+        return f"Zmena vystupu {label} zlyhala: {err}"
+    return f"Nepodarilo sa kontaktovat Sentrymo pri ovladani vystupu {label}: {err}"
 
 
 async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
@@ -191,11 +202,7 @@ async def _async_register_services(hass: HomeAssistant) -> None:
     async def async_handle_set_protection_mode(call: ServiceCall) -> None:
         vehicle_id = str(call.data[ATTR_VEHICLE_ID])
         mode = str(call.data[ATTR_MODE])
-        matching_entries = [
-            data
-            for data in _iter_entry_data(hass, call.data.get(ATTR_ENTRY_ID))
-            if data[DATA_COORDINATOR].vehicle_by_id(vehicle_id) is not None
-        ]
+        matching_entries = _matching_entries_for_vehicle(hass, vehicle_id, call.data.get(ATTR_ENTRY_ID))
 
         if not matching_entries:
             return
@@ -207,11 +214,74 @@ async def _async_register_services(hass: HomeAssistant) -> None:
 
         for data in matching_entries:
             coordinator = data[DATA_COORDINATOR]
+            client = data[DATA_CLIENT]
+            if not client.cpin:
+                raise HomeAssistantError("CPIN nie je dostupny pre zmenu rezimu ochrany.")
             try:
-                await data[DATA_CLIENT].async_set_protection_mode(vehicle_id, mode)
+                await client.async_set_protection_mode(vehicle_id, mode)
             except SentrymoApiError as err:
                 raise HomeAssistantError(_protection_mode_error_message(err)) from err
             coordinator.async_apply_vehicle_state(vehicle_id, **_protection_state_updates(mode))
+            hass.async_create_task(coordinator.async_refresh_after_delay(1.5))
+            return
+
+    async def async_handle_set_immobilizer(call: ServiceCall) -> None:
+        vehicle_id = str(call.data[ATTR_VEHICLE_ID])
+        enabled = bool(call.data[ATTR_ENABLED])
+        matching_entries = _matching_entries_for_vehicle(hass, vehicle_id, call.data.get(ATTR_ENTRY_ID))
+
+        if not matching_entries:
+            return
+
+        if call.data.get(ATTR_ENTRY_ID) is None and len(matching_entries) > 1:
+            raise HomeAssistantError(
+                "Vozidlo bolo najdene na viacerych serveroch. Pri volani sluzby zadaj entry_id."
+            )
+
+        for data in matching_entries:
+            coordinator = data[DATA_COORDINATOR]
+            client = data[DATA_CLIENT]
+            if not client.cpin:
+                raise HomeAssistantError("CPIN nie je dostupny pre ovladanie imobilizera.")
+            try:
+                await client.async_set_immobilizer_active(vehicle_id, enabled)
+            except SentrymoApiError as err:
+                raise HomeAssistantError(_output_error_message("imobilizer", err)) from err
+            coordinator.async_apply_vehicle_state(
+                vehicle_id,
+                immobilizer_active=enabled,
+                immo=enabled,
+            )
+            hass.async_create_task(coordinator.async_refresh_after_delay(1.5))
+            return
+
+    async def async_handle_set_accessory(call: ServiceCall) -> None:
+        vehicle_id = str(call.data[ATTR_VEHICLE_ID])
+        enabled = bool(call.data[ATTR_ENABLED])
+        matching_entries = _matching_entries_for_vehicle(hass, vehicle_id, call.data.get(ATTR_ENTRY_ID))
+
+        if not matching_entries:
+            return
+
+        if call.data.get(ATTR_ENTRY_ID) is None and len(matching_entries) > 1:
+            raise HomeAssistantError(
+                "Vozidlo bolo najdene na viacerych serveroch. Pri volani sluzby zadaj entry_id."
+            )
+
+        for data in matching_entries:
+            coordinator = data[DATA_COORDINATOR]
+            client = data[DATA_CLIENT]
+            if not client.cpin:
+                raise HomeAssistantError("CPIN nie je dostupny pre ovladanie prislusenstva.")
+            try:
+                await client.async_set_accessory_active(vehicle_id, enabled)
+            except SentrymoApiError as err:
+                raise HomeAssistantError(_output_error_message("prislusenstvo", err)) from err
+            coordinator.async_apply_vehicle_state(
+                vehicle_id,
+                accessory_active=enabled,
+                acc=enabled,
+            )
             hass.async_create_task(coordinator.async_refresh_after_delay(1.5))
             return
 
@@ -233,15 +303,57 @@ async def _async_register_services(hass: HomeAssistant) -> None:
             }
         ),
     )
+    hass.services.async_register(
+        DOMAIN,
+        SERVICE_SET_IMMOBILIZER,
+        async_handle_set_immobilizer,
+        schema=vol.Schema(
+            {
+                vol.Required(ATTR_VEHICLE_ID): vol.Coerce(str),
+                vol.Required(ATTR_ENABLED): cv.boolean,
+                vol.Optional(ATTR_ENTRY_ID): str,
+            }
+        ),
+    )
+    hass.services.async_register(
+        DOMAIN,
+        SERVICE_SET_ACCESSORY,
+        async_handle_set_accessory,
+        schema=vol.Schema(
+            {
+                vol.Required(ATTR_VEHICLE_ID): vol.Coerce(str),
+                vol.Required(ATTR_ENABLED): cv.boolean,
+                vol.Optional(ATTR_ENTRY_ID): str,
+            }
+        ),
+    )
     hass.data[DOMAIN][DATA_SERVICES_REGISTERED] = True
 
 
 async def _async_unregister_services(hass: HomeAssistant) -> None:
     """Unregister services when no entries remain."""
-    for service in (SERVICE_REFRESH, SERVICE_SET_PROTECTION_MODE):
+    for service in (
+        SERVICE_REFRESH,
+        SERVICE_SET_PROTECTION_MODE,
+        SERVICE_SET_IMMOBILIZER,
+        SERVICE_SET_ACCESSORY,
+    ):
         if hass.services.has_service(DOMAIN, service):
             hass.services.async_remove(DOMAIN, service)
     hass.data[DOMAIN].pop(DATA_SERVICES_REGISTERED, None)
+
+
+def _matching_entries_for_vehicle(
+    hass: HomeAssistant,
+    vehicle_id: str,
+    target_entry_id: str | None = None,
+) -> list[dict]:
+    """Return entries that contain the requested vehicle."""
+    return [
+        data
+        for data in _iter_entry_data(hass, target_entry_id)
+        if data[DATA_COORDINATOR].vehicle_by_id(vehicle_id) is not None
+    ]
 
 
 def _iter_coordinators(

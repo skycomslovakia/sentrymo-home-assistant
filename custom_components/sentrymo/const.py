@@ -28,13 +28,20 @@ DATA_SERVICES_REGISTERED = "services_registered"
 ATTR_ENTRY_ID = "entry_id"
 ATTR_VEHICLE_ID = "vehicle_id"
 ATTR_MODE = "mode"
+ATTR_ENABLED = "enabled"
 
 SERVICE_REFRESH = "refresh"
 SERVICE_SET_PROTECTION_MODE = "set_protection_mode"
+SERVICE_SET_IMMOBILIZER = "set_immobilizer"
+SERVICE_SET_ACCESSORY = "set_accessory"
 
 COMMAND_PROTECTION_ACTIVATE = "protection_activate"
 COMMAND_PROTECTION_DEACTIVATE = "protection_deactivate"
 COMMAND_PROTECTION_AUTO = "protection_auto"
+COMMAND_IMMOBILIZER_ACTIVATE = "immobilizer_activate"
+COMMAND_IMMOBILIZER_DEACTIVATE = "immobilizer_deactivate"
+COMMAND_ACCESSORY_ACTIVATE = "accessory_activate"
+COMMAND_ACCESSORY_DEACTIVATE = "accessory_deactivate"
 
 PROTECTION_MODE_DISABLED = "disabled"
 PROTECTION_MODE_MANUAL = "manual"
@@ -70,5 +77,6 @@ PLATFORMS = [
     Platform.SENSOR,
     Platform.BINARY_SENSOR,
     Platform.SELECT,
+    Platform.SWITCH,
     Platform.BUTTON,
 ]

@@ -173,7 +173,11 @@ class SentrymoProtectionModeSelect(SentrymoEntity, SelectEntity):
     @property
     def available(self) -> bool:
         """Return select availability."""
-        return super().available and _supports_protection_commands(self.vehicle)
+        return (
+            super().available
+            and _supports_protection_commands(self.vehicle)
+            and bool(self.client.cpin)
+        )
 
     async def async_select_option(self, option: str) -> None:
         """Set protection mode."""
