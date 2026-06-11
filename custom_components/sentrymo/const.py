@@ -9,14 +9,25 @@ from homeassistant.const import Platform
 DOMAIN = "sentrymo"
 
 CONF_API_URL = "api_url"
+CONF_API_ENVIRONMENT = "api_environment"
 CONF_SETUP_KEY = "setup_key"
 CONF_ACCESS_TOKEN = "access_token"
 CONF_REFRESH_TOKEN = "refresh_token"
 CONF_CPIN = "cpin"
 CONF_TOKEN_EXPIRES_AT = "access_token_expires_at"
 
+API_ENVIRONMENT_PRODUCTION = "production"
+API_ENVIRONMENT_BETA = "beta"
+
 DEFAULT_PROD_API_URL = "https://api.prod.sentrymo.eu/ha-api/v1"
 DEFAULT_QA_API_URL = "https://api.qa.sentrymo.eu/ha-api/v1"
+
+DEFAULT_API_ENVIRONMENT = API_ENVIRONMENT_PRODUCTION
+
+API_ENVIRONMENT_URLS = {
+    API_ENVIRONMENT_PRODUCTION: DEFAULT_PROD_API_URL,
+    API_ENVIRONMENT_BETA: DEFAULT_QA_API_URL,
+}
 
 DEFAULT_POLL_INTERVAL = timedelta(seconds=60)
 MIN_POLL_INTERVAL = timedelta(seconds=30)

@@ -27,17 +27,17 @@ Custom Home Assistant integration for Sentrymo vehicle security, tracking and al
 Generate Home Assistant credentials in the Sentrymo mobile app:
 
 1. Open Sentrymo and generate Home Assistant access.
-2. Note the API URL, setup key and 4-digit CPIN.
+2. Note the target environment, setup key and 4-digit CPIN.
 3. In Home Assistant, add the `Sentrymo` integration.
 4. Enter:
    - `Name`
-   - `API URL` such as `https://api.prod.sentrymo.eu/ha-api/v1`
+   - `API environment` as `Production` or `Beta`
    - `Setup key`
    - `CPIN`
 
 The integration exchanges the setup key for access and refresh tokens and stores only:
 
-- API URL
+- API environment mapping
 - access token
 - refresh token
 - access token expiry

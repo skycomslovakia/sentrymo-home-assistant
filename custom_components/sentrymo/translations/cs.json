@@ -6,7 +6,7 @@
         "description": "Propoj svá Sentrymo vozidla s Home Assistantem.",
         "data": {
           "name": "Název",
-          "api_url": "Adresa API",
+          "api_environment": "API prostředí",
           "setup_key": "Párovací klíč",
           "cpin": "CPIN"
         }
@@ -15,7 +15,7 @@
         "title": "Znovu připojit Sentrymo",
         "description": "Zadej nový párovací klíč a 4místný CPIN z aplikace Sentrymo.",
         "data": {
-          "api_url": "Adresa API",
+          "api_environment": "API prostředí",
           "setup_key": "Párovací klíč",
           "cpin": "CPIN"
         }
@@ -38,10 +38,18 @@
     "step": {
       "init": {
         "title": "Možnosti Sentrymo",
-        "description": "Uprav adresu API používanou touto integrací.",
+        "description": "Vyber, které prostředí Sentrymo má tato integrace používat.",
         "data": {
-          "api_url": "Adresa API"
+          "api_environment": "API prostředí"
         }
+      }
+    }
+  },
+  "selector": {
+    "api_environment": {
+      "options": {
+        "production": "Produkce",
+        "beta": "Beta"
       }
     }
   },

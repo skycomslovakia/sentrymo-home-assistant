@@ -6,7 +6,7 @@
         "description": "Connect your Sentrymo vehicles to Home Assistant.",
         "data": {
           "name": "Name",
-          "api_url": "API address",
+          "api_environment": "API environment",
           "setup_key": "Pairing key",
           "cpin": "CPIN"
         }
@@ -15,7 +15,7 @@
         "title": "Reconnect Sentrymo",
         "description": "Enter a new pairing key and the 4-digit CPIN from the Sentrymo app.",
         "data": {
-          "api_url": "API address",
+          "api_environment": "API environment",
           "setup_key": "Pairing key",
           "cpin": "CPIN"
         }
@@ -38,10 +38,18 @@
     "step": {
       "init": {
         "title": "Sentrymo options",
-        "description": "Update the API address used by this integration.",
+        "description": "Choose which Sentrymo environment this integration should use.",
         "data": {
-          "api_url": "API address"
+          "api_environment": "API environment"
         }
+      }
+    }
+  },
+  "selector": {
+    "api_environment": {
+      "options": {
+        "production": "Production",
+        "beta": "Beta"
       }
     }
   },
