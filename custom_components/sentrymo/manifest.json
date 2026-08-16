@@ -1,7 +1,7 @@
 {
   "domain": "sentrymo",
   "name": "Sentrymo",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "codeowners": ["@skycomslovakia"],
   "config_flow": true,
   "documentation": "https://sentrymo.eu",
