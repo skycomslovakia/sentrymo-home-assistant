@@ -12,6 +12,7 @@ from aiohttp import ClientError, ClientResponse, ClientSession
 
 from homeassistant.util import dt as dt_util
 
+from .api_url import normalize_api_url as normalize_api_base_url
 from .const import (
     API_AUTH_EXCHANGE,
     API_AUTH_REFRESH,
@@ -105,17 +106,7 @@ class SentrymoApiClient:
     @staticmethod
     def normalize_api_url(api_url: str | None) -> str:
         """Normalize API URL input to `/api/v1` base."""
-        base_url = (api_url or DEFAULT_PROD_API_URL).strip().rstrip("/")
-        lowered = base_url.lower()
-
-        if lowered.endswith("/api/v1"):
-            return base_url
-        if lowered.endswith("/api"):
-            return f"{base_url}/v1"
-        if lowered.endswith(("/ha-api/v1", "/ha-api")):
-            return base_url[:lowered.rfind("/ha-api")] + "/api/v1"
-
-        return f"{base_url}/api/v1"
+        return normalize_api_base_url(api_url, DEFAULT_PROD_API_URL)
 
     def clear_segment_cache(self) -> None:
         """Clear cached state segments."""

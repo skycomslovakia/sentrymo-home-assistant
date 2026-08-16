@@ -70,10 +70,31 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
     return True
 
 
+def _migrate_api_url(hass: HomeAssistant, entry: ConfigEntry) -> str:
+    """Move persisted entries from the Laravel API to the dedicated HA API."""
+    configured_url = entry.options.get(CONF_API_URL, entry.data.get(CONF_API_URL))
+    normalized_url = SentrymoApiClient.normalize_api_url(configured_url)
+    data = dict(entry.data)
+    options = dict(entry.options)
+    changed = False
+
+    if data.get(CONF_API_URL) != normalized_url:
+        data[CONF_API_URL] = normalized_url
+        changed = True
+    if CONF_API_URL in options and options[CONF_API_URL] != normalized_url:
+        options[CONF_API_URL] = normalized_url
+        changed = True
+
+    if changed:
+        hass.config_entries.async_update_entry(entry, data=data, options=options)
+    return normalized_url
+
+
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up Sentrymo from a config entry."""
     hass.data.setdefault(DOMAIN, {})
     await _async_migrate_entity_identity_scope(hass, entry)
+    api_url = _migrate_api_url(hass, entry)
 
     async def _async_update_tokens(tokens: dict[str, str]) -> None:
         data = dict(entry.data)
@@ -82,7 +103,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     client = SentrymoApiClient(
         async_get_clientsession(hass),
-        api_url=entry.options.get(CONF_API_URL, entry.data[CONF_API_URL]),
+        api_url=api_url,
         access_token=entry.data.get(CONF_ACCESS_TOKEN),
         refresh_token=entry.data.get(CONF_REFRESH_TOKEN),
         token_expires_at=entry.data.get(CONF_TOKEN_EXPIRES_AT),
