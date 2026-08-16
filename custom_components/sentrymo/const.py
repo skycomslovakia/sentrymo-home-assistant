@@ -19,8 +19,8 @@ CONF_TOKEN_EXPIRES_AT = "access_token_expires_at"
 API_ENVIRONMENT_PRODUCTION = "production"
 API_ENVIRONMENT_BETA = "beta"
 
-DEFAULT_PROD_API_URL = "https://api.prod.sentrymo.eu/ha-api/v1"
-DEFAULT_QA_API_URL = "https://api.qa.sentrymo.eu/ha-api/v1"
+DEFAULT_PROD_API_URL = "https://ha-api.sentrymo.eu/api/v1"
+DEFAULT_QA_API_URL = "https://ha-api.qa.sentrymo.eu/api/v1"
 
 DEFAULT_API_ENVIRONMENT = API_ENVIRONMENT_PRODUCTION
 
